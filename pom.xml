@@ -63,6 +63,13 @@
             <groupId>org.telegram</groupId>
             <artifactId>telegrambots</artifactId>
             <version>${telegram-bot.version}</version>
+            <exclusions>
+                <!-- legacy javax JAXB; Jersey 3.x uses jackson-module-jakarta-xmlbind-annotations -->
+                <exclusion>
+                    <groupId>com.fasterxml.jackson.module</groupId>
+                    <artifactId>jackson-module-jaxb-annotations</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.telegram</groupId>

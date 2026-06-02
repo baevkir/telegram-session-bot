@@ -18,17 +18,24 @@ import com.kb.sessionbot.fixtures.OrderCommand;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.telegram.telegrambots.meta.api.methods.botapimethods.BotApiMethod;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
 
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -194,5 +201,85 @@ class CommandsSessionBotTest {
 
         // SetMyCommands at startup + SendMessage + DeleteMessage from the completed command.
         verify(telegramClient, timeout(2000).atLeast(2)).execute(any(BotApiMethod.class));
+    }
+
+    @Nested
+    @DisplayName("concurrency guarantees")
+    class Concurrency {
+
+        @DisplayName("per-chat updates process in arrival order under concatMap")
+        @Test
+        void perChatOrderingIsPreserved() {
+            var bot = bot(ALLOW);
+            // Within one chat: first "/order?buy" prompts for product, then "book" completes -> "buy:book".
+            var updates = Flux.just(
+                Fixtures.wrap(Fixtures.messageUpdate(1, Fixtures.CHAT_ID, 100, "/order?buy")),
+                Fixtures.wrap(Fixtures.callbackUpdate(2, Fixtures.CHAT_ID, 101, "book")));
+
+            StepVerifier.create(bot.handleUpdates(updates)
+                    .filter(m -> m instanceof SendMessage)
+                    .map(m -> ((SendMessage) m).getText()))
+                .expectNextMatches(text -> text.contains("product"))
+                .expectNext("buy:book")
+                .verifyComplete();
+        }
+
+        @DisplayName("concurrent sendMessage from multiple threads loses no message")
+        @Test
+        void concurrentSendMessageLosesNothing() throws Exception {
+            var bot = bot(ALLOW);
+            bot.init(); // SetMyCommands emitted once at startup
+
+            int threads = 8;
+            int perThread = 25;
+            int total = threads * perThread;
+            var pool = Executors.newFixedThreadPool(threads);
+            var start = new CountDownLatch(1);
+            var done = new CountDownLatch(threads);
+            var sent = new AtomicInteger();
+            try {
+                for (int t = 0; t < threads; t++) {
+                    pool.submit(() -> {
+                        try {
+                            start.await();
+                            for (int i = 0; i < perThread; i++) {
+                                bot.sendMessage(SendMessage.builder()
+                                    .chatId(String.valueOf(Fixtures.CHAT_ID))
+                                    .text("m" + sent.getAndIncrement())
+                                    .build());
+                            }
+                        } catch (InterruptedException ignored) {
+                            Thread.currentThread().interrupt();
+                        } finally {
+                            done.countDown();
+                        }
+                    });
+                }
+                start.countDown();
+                assertThat(done.await(10, TimeUnit.SECONDS)).isTrue();
+            } finally {
+                pool.shutdownNow();
+            }
+
+            // SetMyCommands (1) + every sendMessage executed; busyLooping must not drop any.
+            verify(telegramClient, timeout(5000).times(total + 1)).execute(any(BotApiMethod.class));
+        }
+
+        @DisplayName("a chat whose handler errors does not terminate the stream (failure isolation)")
+        @Test
+        void failureInOneChatDoesNotKillPipeline() throws Exception {
+            var bot = bot(DENY); // auth denial makes the first chat's dispatch error
+            bot.init();
+
+            // chat A: auth-denied command -> BotAuthException routed by per-group onErrorResume.
+            bot.consume(Fixtures.messageUpdate(1, Fixtures.CHAT_ID, 100, "/order?buy&book"));
+            // chat B (different chatId): a help-routing empty update still processes afterwards.
+            long otherChat = Fixtures.CHAT_ID + 1;
+            bot.consume(Fixtures.messageUpdate(2, otherChat, 200, "anything"));
+
+            // SetMyCommands + the auth error message + chat B's help response all execute;
+            // the pipeline survived the first chat's error.
+            verify(telegramClient, timeout(5000).atLeast(3)).execute(any(BotApiMethod.class));
+        }
     }
 }

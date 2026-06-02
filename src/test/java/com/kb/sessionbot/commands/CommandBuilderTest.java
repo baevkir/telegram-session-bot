@@ -140,5 +140,15 @@ class CommandBuilderTest {
             assertThat(wire.getBytes().length).isEqualTo(65);
             assertThat(wire).isEqualTo("/c?" + answer);
         }
+
+        @Test
+        void multiByteCharsCountAsUtf8Bytes() {
+            // Cyrillic 'я' is 2 bytes in UTF-8. "/c?" is 3 bytes; 31 'я' = 62 bytes -> 65 total, over the 64 limit.
+            var answer = "я".repeat(31);
+            var wire = CommandBuilder.create().command("c").addAnswer(answer).build();
+            assertThat(wire).isEqualTo("/c?" + answer);
+            assertThat(wire.getBytes(java.nio.charset.StandardCharsets.UTF_8).length).isEqualTo(65);
+            // Same string under the platform default could miscount; the builder must use UTF-8 for its limit check.
+        }
     }
 }

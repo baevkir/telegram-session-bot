@@ -9,6 +9,7 @@ public interface CommandConstants {
     String DYNAMIC_PARAMETERS_SEPARATOR = "#";
 
     int MAX_CALLBACK_BYTES = 64;
+    String NULL_ANSWER = "null";
 
     String REFRESH_CONTEXT_DYNAMIC_PARAM = "refreshContext";
     String SCIP_ANSWER_DYNAMIC_PARAM = "scipAnswer";

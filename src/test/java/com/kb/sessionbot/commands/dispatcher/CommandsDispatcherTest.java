@@ -99,6 +99,20 @@ class CommandsDispatcherTest {
                 .assertNext(m -> assertThat(((SendMessage) m).getText()).isEqualTo("note:hello/null"))
                 .verifyComplete();
         }
+
+        @Test
+        @DisplayName("the NULL_ANSWER sentinel decodes to a null (absent) argument, not the literal text \"null\"")
+        void nullAnswerSentinelDecodesToNull() {
+            // note&{required}&{optional}; optional supplied as the NULL_ANSWER sentinel -> decoded as null.
+            // A null-decoded answer collapses to an empty Optional in getArgument, so the optional is
+            // treated as absent and re-prompted (rather than binding the literal string "null").
+            var result = orderDispatcher.invoke(ctx("/order?note&hello&" + com.kb.sessionbot.commands.CommandConstants.NULL_ANSWER));
+            assertThat(result.hasErrors()).isFalse();
+            assertThat(result.getInvocation()).isNull();
+            StepVerifier.create(result.getInvocationArgument())
+                .assertNext(m -> assertThat(((SendMessage) m).getText()).contains("optional"))
+                .verifyComplete();
+        }
     }
 
     @Nested

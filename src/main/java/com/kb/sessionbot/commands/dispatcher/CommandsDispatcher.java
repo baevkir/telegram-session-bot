@@ -3,6 +3,7 @@ package com.kb.sessionbot.commands.dispatcher;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.kb.sessionbot.commands.CommandBuilder;
+import com.kb.sessionbot.commands.CommandConstants;
 import com.kb.sessionbot.commands.dispatcher.annotations.BotCommand;
 import com.kb.sessionbot.commands.dispatcher.parameters.ParameterRenderer;
 import com.kb.sessionbot.commands.dispatcher.parameters.ParameterRequest;
@@ -159,7 +160,7 @@ public class CommandsDispatcher {
         if (argumentIndex < answers.size()) {
             return Optional.ofNullable(answers.get(argumentIndex))
                 .map(answer -> {
-                    if (answer.equals("null")) {
+                    if (CommandConstants.NULL_ANSWER.equals(answer)) {
                         return null;
                     }
                    return mapper.convertValue(answer, parameter.getParameterType());

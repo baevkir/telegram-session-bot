@@ -41,6 +41,12 @@ class CommandBuilderTest {
         }
 
         @Test
+        void nullLocalDateEncodesToNullAnswerSentinel() {
+            assertThat(CommandBuilder.create().command("c").addAnswer((java.time.LocalDate) null).build())
+                .isEqualTo("/c?null");
+        }
+
+        @Test
         void singleDynamicParamWithValue() {
             assertThat(CommandBuilder.create().command("c").addParam("k", "v").build())
                 .isEqualTo("/c#k:v");

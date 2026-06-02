@@ -57,7 +57,7 @@ public class CommandBuilder {
 
     public CommandBuilder addAnswer(LocalDate answer) {
         if (answer == null) {
-            answers.add(null);
+            answers.add(NULL_ANSWER);
         } else {
             answers.add(answer.format(DateTimeFormatter.ISO_DATE));
         }

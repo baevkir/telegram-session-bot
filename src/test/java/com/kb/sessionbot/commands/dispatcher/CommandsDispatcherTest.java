@@ -89,7 +89,10 @@ class CommandsDispatcherTest {
         @Test
         void optionalSkippedWhenScipAnswerSet() {
             // required supplied; optional missing but scipAnswer allows skipping index 2.
-            var result = orderDispatcher.invoke(ctx("/order?note&hello#scipAnswer:2"));
+            var context = com.kb.sessionbot.model.CommandContext
+                .create(Fixtures.commandWrapper("/order?note&hello"))
+                .addUpdate(Fixtures.answerWrapper(2, 100, "#scipAnswer:2"));
+            var result = orderDispatcher.invoke(context);
             assertThat(result.hasErrors()).isFalse();
             assertThat(result.getInvocationArgument()).isNull();
             StepVerifier.create(result.getInvocation())

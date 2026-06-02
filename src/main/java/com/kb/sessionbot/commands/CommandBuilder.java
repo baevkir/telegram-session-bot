@@ -7,8 +7,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -16,10 +14,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import java.util.zip.Deflater;
 
 import static com.kb.sessionbot.commands.CommandConstants.*;
 
+/**
+ * Builds the callback/command wire string ({@code /command?answer1&answer2#param:value})
+ * from a command, answers and dynamic parameters. Warns when the result exceeds Telegram's
+ * 64-byte callback-data limit.
+ */
 @Slf4j
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public class CommandBuilder {

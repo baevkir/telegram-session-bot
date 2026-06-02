@@ -3,10 +3,9 @@ package com.kb.sessionbot.commands.dispatcher.parameters;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.reactivestreams.Publisher;
-import org.telegram.telegrambots.meta.api.methods.PartialBotApiMethod;
+import org.telegram.telegrambots.meta.api.methods.botapimethods.PartialBotApiMethod;
 
 import java.time.LocalDate;
-import java.util.Objects;
 
 @Slf4j
 @AllArgsConstructor

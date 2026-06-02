@@ -1,15 +1,15 @@
 package com.kb.sessionbot.commands.dispatcher.parameters;
 
-import com.google.common.collect.ImmutableList;
 import com.kb.sessionbot.commands.CommandBuilder;
 import com.kb.sessionbot.model.UpdateWrapper;
 import org.reactivestreams.Publisher;
-import org.telegram.telegrambots.meta.api.methods.PartialBotApiMethod;
+import org.telegram.telegrambots.meta.api.methods.botapimethods.PartialBotApiMethod;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageReplyMarkup;
-import org.telegram.telegrambots.meta.api.objects.Message;
+import org.telegram.telegrambots.meta.api.objects.message.Message;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
 import reactor.core.publisher.Mono;
 
 import java.time.LocalDate;
@@ -48,16 +48,16 @@ public class DateParameterRenderer implements ParameterRenderer {
     }
 
     private InlineKeyboardMarkup buildKeyBoard(ParameterRequest parameterRequest, LocalDate date) {
-        List<List<InlineKeyboardButton>> rowsInline = new ArrayList<>();
+        List<InlineKeyboardRow> rowsInline = new ArrayList<>();
 
-        rowsInline.add(Collections.singletonList(
+        rowsInline.add(new InlineKeyboardRow(
             InlineKeyboardButton.builder()
                 .text(date.format(DateTimeFormatter.ofPattern("MMMM yyyy")))
                 .callbackData(CommandBuilder.create().addParam(DATE_PROPERTY, date.format(ISO_DATE)).addParam(CONTINUE_CHOOSE).build())
                 .build()
         ));
 
-        rowsInline.add(Arrays.asList(
+        rowsInline.add(new InlineKeyboardRow(
             InlineKeyboardButton.builder()
                 .text("Пн")
                 .callbackData(CommandBuilder.create().addParam(DATE_PROPERTY, date.format(ISO_DATE)).addParam(CONTINUE_CHOOSE).build())
@@ -95,7 +95,7 @@ public class DateParameterRenderer implements ParameterRenderer {
             if (currentDate.getMonthValue() != currentMonth) {
                 break;
             }
-            List<InlineKeyboardButton> weekRow = new ArrayList<>();
+            InlineKeyboardRow weekRow = new InlineKeyboardRow();
             for (int dayIndex = 1; dayIndex <= 7; dayIndex++) {
                 if (currentDate.getDayOfWeek().getValue() > dayIndex || currentDate.getMonthValue() != currentMonth) {
                     weekRow.add(
@@ -122,7 +122,7 @@ public class DateParameterRenderer implements ParameterRenderer {
             rowsInline.add(weekRow);
         }
 
-        rowsInline.add(Arrays.asList(
+        rowsInline.add(new InlineKeyboardRow(
                 InlineKeyboardButton.builder()
                     .text("<")
                     .callbackData(
@@ -146,7 +146,7 @@ public class DateParameterRenderer implements ParameterRenderer {
 
         if (!parameterRequest.isRequired()) {
             rowsInline.add(
-                Collections.singletonList(InlineKeyboardButton.builder()
+                new InlineKeyboardRow(InlineKeyboardButton.builder()
                     .text("Пропусить")
                     .callbackData(CommandBuilder.create().scipAnswer(parameterRequest.getIndex()).build())
                     .build())

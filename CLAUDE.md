@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A **Spring Boot auto-configuration starter** (`com.kb:telegram-session-bot`) for building Telegram bots whose commands behave like multi-step conversations. A command can ask the user for missing arguments one at a time (via inline keyboards or text replies); the framework accumulates those answers into a per-chat session until the command has everything it needs to run. Published as a Maven artifact to a GitHub-hosted repo (`baevkir/library-project`, `mvn-repo` branch).
 
-Java 21, Spring Boot 3.5, Maven, Project Reactor, Lombok, `org.telegram:telegrambots` 6.8.0.
+Java 21, Spring Boot 3.5, Maven, Project Reactor, Lombok, `org.telegram:telegrambots-{meta,client,longpolling}` 10.0.0.
 
 ## Build & test
 
@@ -33,9 +33,9 @@ The config scans the app context for beans annotated `@BotCommand` and wraps eac
 
 ## Core processing flow
 
-`CommandsSessionBot` (extends `TelegramLongPollingBot`) is fully reactive — it does **not** process updates inline:
+`CommandsSessionBot` (a `LongPollingSingleThreadUpdateConsumer`, registered via `TelegramBotsLongPollingApplication` and sending through an OkHttp `TelegramClient`) is fully reactive — it does **not** process updates inline:
 
-1. `onUpdateReceived` pushes every `Update` into a Reactor `Sinks.Many`.
+1. `consume` pushes every `Update` into a Reactor `Sinks.Many`.
 2. Updates are `groupBy(chatId)`, so each chat is an independent sequential stream.
 3. `handleUpdates` uses `scanWith(CommandContext::empty, ...)` to fold a chat's update stream into an evolving **`CommandContext`**:
    - a command update (`/foo`) starts a fresh context,

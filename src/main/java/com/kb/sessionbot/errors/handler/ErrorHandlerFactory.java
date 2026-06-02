@@ -2,7 +2,7 @@ package com.kb.sessionbot.errors.handler;
 
 import com.google.common.collect.Lists;
 import lombok.extern.slf4j.Slf4j;
-import org.telegram.telegrambots.meta.api.methods.PartialBotApiMethod;
+import org.telegram.telegrambots.meta.api.methods.botapimethods.PartialBotApiMethod;
 import reactor.core.publisher.Mono;
 
 import jakarta.annotation.PostConstruct;
@@ -13,6 +13,11 @@ import java.util.Map;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getThrowableList;
 
+/**
+ * Routes a thrown error to the {@link ErrorHandler} registered for its exception type,
+ * walking the cause chain from the root outward. Logs and swallows the error when no
+ * handler matches.
+ */
 @Slf4j
 public class ErrorHandlerFactory {
     private final List<ErrorHandler<?>> errorHandlers;
@@ -26,6 +31,7 @@ public class ErrorHandlerFactory {
         for (Throwable currentError : Lists.reverse(getThrowableList(exception))) {
             ErrorHandler<Throwable> errorHandler = errorHandlerMap.get(currentError.getClass());
             if (errorHandler != null) {
+                log.debug("Handling {} with {}", currentError.getClass().getSimpleName(), errorHandler.getClass().getSimpleName());
                 return errorHandler.handle(currentError);
             }
         }

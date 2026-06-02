@@ -3,23 +3,23 @@ package com.kb.sessionbot.commands.dispatcher;
 import com.kb.sessionbot.commands.IBotCommand;
 import com.kb.sessionbot.model.CommandContext;
 import com.kb.sessionbot.model.ContextState;
-import com.kb.sessionbot.model.UpdateWrapper;
 import lombok.extern.slf4j.Slf4j;
 import org.reactivestreams.Publisher;
 import org.springframework.context.ApplicationContext;
 import org.springframework.util.Assert;
-import org.telegram.telegrambots.meta.api.methods.PartialBotApiMethod;
-import org.telegram.telegrambots.meta.api.methods.updates.GetUpdates;
+import org.telegram.telegrambots.meta.api.methods.botapimethods.PartialBotApiMethod;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage;
-import org.telegram.telegrambots.meta.api.objects.Message;
+import org.telegram.telegrambots.meta.api.objects.message.MaybeInaccessibleMessage;
+import org.telegram.telegrambots.meta.api.objects.message.Message;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.stream.Stream;
 
+/**
+ * Adapts a {@code @BotCommand} bean to {@link IBotCommand}. Runs one dispatch step,
+ * suspending the context in {@code progress} when more input is needed, and on completion
+ * deletes the chat's question and answer messages to keep the conversation clean.
+ */
 @Slf4j
 public class DispatcherBotCommand implements IBotCommand {
 
@@ -31,6 +31,7 @@ public class DispatcherBotCommand implements IBotCommand {
 
     public Publisher<? extends PartialBotApiMethod<?>> process(CommandContext commandContext) {
         Assert.isTrue(!ContextState.close.equals(commandContext.getState()), "Cannot process closed context");
+        log.debug("Processing command '{}' (state={})", commandsDispatcher.getCommandId(), commandContext.getState());
         var invocationResult = commandsDispatcher.invoke(commandContext);
         if (invocationResult.hasErrors()) {
             return Mono.error(invocationResult.getInvocationError());
@@ -43,9 +44,11 @@ public class DispatcherBotCommand implements IBotCommand {
         }
         if (invocationResult.getInvocationArgument() != null) {
             commandContext.startProgress();
+            log.debug("Command '{}' needs more input, prompting user", commandsDispatcher.getCommandId());
             return invocationResult.getInvocationArgument();
         }
         commandContext.close();
+        log.debug("Command '{}' complete, cleaning up question/answer messages", commandsDispatcher.getCommandId());
         var removeOldMessages = Flux.<Integer>create(sink -> {
                 commandContext.getQuestionMessages().stream()
                     .map(Message::getMessageId)
@@ -53,7 +56,7 @@ public class DispatcherBotCommand implements IBotCommand {
 
                 commandContext.getUpdates().forEach(update -> {
                     update.getMessageId().ifPresent(sink::next);
-                    update.getCallbackMessage().map(Message::getMessageId).ifPresent(sink::next);
+                    update.getCallbackMessage().map(MaybeInaccessibleMessage::getMessageId).ifPresent(sink::next);
                 });
                 sink.complete();
             })

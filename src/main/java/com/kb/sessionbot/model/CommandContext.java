@@ -5,10 +5,15 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 import org.springframework.util.Assert;
-import org.telegram.telegrambots.meta.api.objects.Message;
+import org.telegram.telegrambots.meta.api.objects.message.Message;
 
 import java.util.*;
 
+/**
+ * Per-chat session state for a multi-step command: the originating command update, the
+ * accumulated answers, the question messages sent back to the user, and the
+ * open &rarr; progress &rarr; close lifecycle.
+ */
 @ToString
 @Getter
 @NoArgsConstructor(access = AccessLevel.PRIVATE)

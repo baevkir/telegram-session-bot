@@ -4,7 +4,6 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.BooleanUtils;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
@@ -16,6 +15,10 @@ import java.util.stream.Collectors;
 
 import static com.kb.sessionbot.commands.CommandConstants.*;
 
+/**
+ * Parses the callback/command wire format ({@code /command?answer1&answer2#param:value})
+ * into its command, answers, and dynamic parameters.
+ */
 @Slf4j
 @Getter
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
@@ -30,6 +33,7 @@ public class MessageDescriptor {
         parser.command = parseCommand(text);
         parser.answers = parseAnswers(text);
         parser.dynamicParams = parseDynamicParams(text);
+        log.debug("Parsed '{}' -> command={} answers={} params={}", text, parser.command, parser.answers, parser.dynamicParams);
         return parser;
     }
 

@@ -2,10 +2,8 @@ package com.kb.sessionbot.commands;
 
 import com.kb.sessionbot.model.CommandContext;
 import org.reactivestreams.Publisher;
-import org.telegram.telegrambots.meta.api.methods.PartialBotApiMethod;
-import reactor.core.publisher.Mono;
+import org.telegram.telegrambots.meta.api.methods.botapimethods.PartialBotApiMethod;
 
-import java.util.concurrent.Flow;
 
 public interface IBotCommand {
     /**

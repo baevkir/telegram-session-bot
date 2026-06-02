@@ -17,7 +17,7 @@
 
     <properties>
         <java.version>21</java.version>
-        <telegram-bot.version>6.8.0</telegram-bot.version>
+        <telegram-bot.version>10.0.0</telegram-bot.version>
         <guava.version>33.0.0-jre</guava.version>
         <commons-collections4.version>4.1</commons-collections4.version>
         <commons-lang3.version>3.18.0</commons-lang3.version>
@@ -56,24 +56,17 @@
         </dependency>
         <dependency>
             <groupId>org.telegram</groupId>
-            <artifactId>telegrambotsextensions</artifactId>
-            <version>${telegram-bot.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.telegram</groupId>
-            <artifactId>telegrambots</artifactId>
-            <version>${telegram-bot.version}</version>
-            <exclusions>
-                <!-- legacy javax JAXB; Jersey 3.x uses jackson-module-jakarta-xmlbind-annotations -->
-                <exclusion>
-                    <groupId>com.fasterxml.jackson.module</groupId>
-                    <artifactId>jackson-module-jaxb-annotations</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-        <dependency>
-            <groupId>org.telegram</groupId>
             <artifactId>telegrambots-meta</artifactId>
+            <version>${telegram-bot.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.telegram</groupId>
+            <artifactId>telegrambots-client</artifactId>
+            <version>${telegram-bot.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.telegram</groupId>
+            <artifactId>telegrambots-longpolling</artifactId>
             <version>${telegram-bot.version}</version>
         </dependency>
         <dependency>

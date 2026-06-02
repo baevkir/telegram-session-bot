@@ -3,7 +3,6 @@ package com.kb.sessionbot.model;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
-import org.apache.commons.lang3.BooleanUtils;
 
 import java.util.Collections;
 import java.util.Map;

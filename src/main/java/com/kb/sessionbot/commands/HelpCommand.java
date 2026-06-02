@@ -4,7 +4,8 @@ package com.kb.sessionbot.commands;
 import com.kb.sessionbot.model.CommandContext;
 import lombok.extern.slf4j.Slf4j;
 import org.reactivestreams.Publisher;
-import org.telegram.telegrambots.meta.api.methods.PartialBotApiMethod;
+import org.telegram.telegrambots.meta.api.methods.ParseMode;
+import org.telegram.telegrambots.meta.api.methods.botapimethods.PartialBotApiMethod;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import reactor.core.publisher.Mono;
 
@@ -48,11 +49,11 @@ public class HelpCommand implements IBotCommand {
                 .filter(Predicate.not(IBotCommand::hidden))
                 .forEach(botCommand -> helpMessageBuilder.append(getCommandPresenter(botCommand)).append("\n\n"));
 
-            SendMessage helpMessage = new SendMessage();
-            helpMessage.setChatId(commandContext.getChatId());
-            helpMessage.enableHtml(true);
-            helpMessage.setText(helpMessageBuilder.toString());
-            return helpMessage;
+            return SendMessage.builder()
+                .chatId(commandContext.getChatId())
+                .parseMode(ParseMode.HTML)
+                .text(helpMessageBuilder.toString())
+                .build();
         });
     }
 

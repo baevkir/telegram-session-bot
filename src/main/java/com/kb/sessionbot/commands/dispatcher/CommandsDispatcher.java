@@ -2,7 +2,6 @@ package com.kb.sessionbot.commands.dispatcher;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.google.common.collect.Sets;
 import com.kb.sessionbot.commands.CommandBuilder;
 import com.kb.sessionbot.commands.dispatcher.annotations.BotCommand;
 import com.kb.sessionbot.commands.dispatcher.parameters.ParameterRenderer;
@@ -17,7 +16,7 @@ import org.reactivestreams.Publisher;
 import org.springframework.context.ApplicationContext;
 import org.springframework.util.Assert;
 import org.springframework.util.ReflectionUtils;
-import org.telegram.telegrambots.meta.api.methods.PartialBotApiMethod;
+import org.telegram.telegrambots.meta.api.methods.botapimethods.PartialBotApiMethod;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.User;
 import reactor.core.publisher.Mono;
@@ -26,6 +25,11 @@ import java.lang.reflect.Method;
 import java.util.*;
 
 
+/**
+ * Reflects over a {@code @BotCommand} bean's {@code @CommandMethod} methods, scores them
+ * against the context's accumulated answers, binds each parameter, and either invokes the
+ * best match or renders a prompt for the next missing argument.
+ */
 @Slf4j
 public class CommandsDispatcher {
     private final Object command;
@@ -50,6 +54,7 @@ public class CommandsDispatcher {
 
     public InvocationResult invoke(CommandContext context) {
         var invocationResult = new InvocationResult();
+        log.debug("Invoking command '{}' with answers {}", commandId, context.getAnswers());
 
         try {
             var methodDescriptor = findInvokerMethod(context, invocationResult);
@@ -81,6 +86,7 @@ public class CommandsDispatcher {
                             invocationResult.addArgument(null);
                             args.add(null);
                         } else {
+                            log.debug("Parameter '{}' missing for command '{}', rendering prompt", parameter.getName(), commandId);
                             invocationResult.invocationArgument = getRenderer(parameter).render(
                                 ParameterRequest.builder()
                                     .index(index)
@@ -129,6 +135,7 @@ public class CommandsDispatcher {
                     .onErrorMap(error -> new BotCommandException(context, error));
             }
         } catch (Throwable error) {
+            log.debug("Command '{}' invocation raised {}", commandId, error.toString());
             invocationResult.invocationError = new BotCommandException(context, error);
         }
 
@@ -167,6 +174,7 @@ public class CommandsDispatcher {
     private MethodDescriptor findInvokerMethod(CommandContext commandContext, InvocationResult invocationResult) {
         return methodMatcher.getMatchingMethod(commandContext).orElseGet(() -> {
             var options = CommandBuilder.create().addAnswers(commandContext.getAnswers()).build();
+            log.debug("No method matched command '{}' with answers {}, rendering options prompt", commandContext.getCommand(), commandContext.getAnswers());
             invocationResult.invocationArgument = getDefaultRenderer().render(
                 ParameterRequest.builder()
                     .context(commandContext)

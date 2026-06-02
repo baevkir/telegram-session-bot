@@ -6,7 +6,8 @@ import lombok.Getter;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
-import org.telegram.telegrambots.meta.api.objects.Message;
+import org.telegram.telegrambots.meta.api.objects.message.MaybeInaccessibleMessage;
+import org.telegram.telegrambots.meta.api.objects.message.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.User;
 
@@ -65,7 +66,7 @@ public class UpdateWrapper {
         return messageDescriptor.getAnswers();
     }
 
-    public Optional<Message> getCallbackMessage() {
+    public Optional<MaybeInaccessibleMessage> getCallbackMessage() {
         return Optional.of(update)
             .filter(Update::hasCallbackQuery)
             .map(Update::getCallbackQuery)

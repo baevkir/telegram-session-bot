@@ -62,9 +62,8 @@ public class CommandsDispatcher {
                 if (invocationResult.invocationArgument != null) {
                     return invocationResult;
                 }
-                throw new RuntimeException(
-                    "Cannot find command method for " + context.getCommand() + " with arguments " + context.getAnswers()
-                );
+                throw new BotCommandException(context, new IllegalStateException(
+                    "Cannot find command method for " + context.getCommand() + " with arguments " + context.getAnswers()));
             }
             invocationResult.invocationMethod = methodDescriptor.getMethod();
 
@@ -134,8 +133,11 @@ public class CommandsDispatcher {
                     .flatMapMany(result -> InvocationResultResolver.of(result).resolve())
                     .onErrorMap(error -> new BotCommandException(context, error));
             }
+        } catch (BotCommandException error) {
+            log.debug("Command '{}' invocation failed in chat {}", commandId, context.getChatId(), error);
+            invocationResult.invocationError = error;
         } catch (Throwable error) {
-            log.debug("Command '{}' invocation raised {}", commandId, error.toString());
+            log.debug("Command '{}' invocation failed in chat {}", commandId, context.getChatId(), error);
             invocationResult.invocationError = new BotCommandException(context, error);
         }
 

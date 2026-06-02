@@ -177,4 +177,34 @@ class CommandsDispatcherTest {
                 .verifyComplete();
         }
     }
+
+    @Nested
+    @DisplayName("invocation errors route to BotCommandException")
+    class ErrorRouting {
+
+        @Test
+        void invocationErrorIsWrappedAsBotCommandException() {
+            // qty binds a Long; a non-numeric answer makes Jackson conversion fail synchronously
+            // inside invoke(), which the catch block wraps as a BotCommandException carrying the context.
+            var result = orderDispatcher.invoke(ctx("/order?qty&not-a-number"));
+            assertThat(result.hasErrors()).isTrue();
+            assertThat(result.getInvocationError())
+                .isInstanceOf(com.kb.sessionbot.errors.exception.BotCommandException.class);
+        }
+
+        @Test
+        void routedThroughErrorHandlerFactoryProducesSendMessage() {
+            var factory = new com.kb.sessionbot.errors.handler.ErrorHandlerFactory(
+                java.util.List.<com.kb.sessionbot.errors.handler.ErrorHandler<?>>of(
+                    new com.kb.sessionbot.errors.handler.BotCommandErrorHandler(),
+                    new com.kb.sessionbot.errors.handler.BotAuthErrorHandler()));
+            factory.init();
+            var ex = new com.kb.sessionbot.errors.exception.BotCommandException(
+                ctx("/order?unsupported"),
+                new IllegalStateException("Cannot find command method for order with arguments [unsupported]"));
+            StepVerifier.create(factory.handle(ex))
+                .assertNext(m -> assertThat(m).isInstanceOf(SendMessage.class))
+                .verifyComplete();
+        }
+    }
 }

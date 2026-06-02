@@ -1,6 +1,5 @@
 package com.kb.sessionbot.commands.dispatcher.parameters;
 
-import com.google.common.collect.ImmutableList;
 import com.kb.sessionbot.commands.CommandBuilder;
 import com.kb.sessionbot.model.UpdateWrapper;
 import org.reactivestreams.Publisher;

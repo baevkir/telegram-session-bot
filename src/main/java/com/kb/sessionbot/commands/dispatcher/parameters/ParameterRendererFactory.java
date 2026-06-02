@@ -6,7 +6,6 @@ import org.reactivestreams.Publisher;
 import org.telegram.telegrambots.meta.api.methods.botapimethods.PartialBotApiMethod;
 
 import java.time.LocalDate;
-import java.util.Objects;
 
 @Slf4j
 @AllArgsConstructor

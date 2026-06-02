@@ -148,6 +148,24 @@ class CommandsSessionBotTest {
             .verifyComplete();
     }
 
+    @DisplayName("auth rejection with a missing user surfaces BotAuthException, not NPE")
+    @Test
+    void authRejectWithMissingUserDoesNotNpe() {
+        var bot = bot(DENY);
+        var update = new org.telegram.telegrambots.meta.api.objects.Update();
+        update.setUpdateId(1);
+        update.setMessage(org.telegram.telegrambots.meta.api.objects.message.Message.builder()
+            .messageId(100)
+            .chat(org.telegram.telegrambots.meta.api.objects.chat.Chat.builder().id(Fixtures.CHAT_ID).type("private").build())
+            .text("/order?buy&book")
+            .build()); // no .from(...)
+        var updates = Flux.just(Fixtures.wrap(update));
+
+        StepVerifier.create(bot.handleUpdates(updates))
+            .expectError(BotAuthException.class)
+            .verify();
+    }
+
     @DisplayName("refreshContext rebuilds the context from the original command")
     @Test
     void refreshContextRebuild() {

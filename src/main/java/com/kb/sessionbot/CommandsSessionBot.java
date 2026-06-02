@@ -128,8 +128,10 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
                 return authInterceptor.intercept(context)
                     .flatMapMany(result -> {
                         if (!result) {
-                            log.debug("Auth rejected for command '{}' in chat {}", context.getCommand(), context.getChatId());
-                            return Flux.error(new BotAuthException(context, "User " + context.getCommandUpdate().getFrom().getUserName()+ " is unauthorized to use bot."));
+                            var from = context.getCommandUpdate().getFrom();
+                            var username = from != null ? from.getUserName() : "unknown";
+                            log.debug("Auth rejected for command '{}' in chat {} (user={})", context.getCommand(), context.getChatId(), username);
+                            return Flux.error(new BotAuthException(context, "User " + username + " is unauthorized to use bot."));
                         }
                         return commandsFactory.getCommand(context.getCommand()).process(context);
                     })

@@ -2,7 +2,12 @@ package com.kb.sessionbot.config;
 
 import com.kb.sessionbot.CommandsSessionBot;
 import com.kb.sessionbot.auth.AuthInterceptor;
+import com.kb.sessionbot.commands.CommandsFactory;
 import com.kb.sessionbot.commands.HelpCommand;
+import com.kb.sessionbot.commands.dispatcher.parameters.ParameterRenderer;
+import com.kb.sessionbot.errors.handler.BotAuthErrorHandler;
+import com.kb.sessionbot.errors.handler.BotCommandErrorHandler;
+import com.kb.sessionbot.errors.handler.ErrorHandlerFactory;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -43,7 +48,16 @@ class CommandsSessionBotAutoConfigurationTest {
             assertThat(context).hasNotFailed();
             assertThat(context).hasSingleBean(CommandsSessionBot.class);
             assertThat(context).hasSingleBean(HelpCommand.class);
+            assertThat(context).hasSingleBean(CommandsFactory.class);
             assertThat(context).hasSingleBean(AuthInterceptor.class);
+            assertThat(context).hasSingleBean(ErrorHandlerFactory.class);
+            assertThat(context).hasSingleBean(BotCommandErrorHandler.class);
+            assertThat(context).hasSingleBean(BotAuthErrorHandler.class);
+            assertThat(context).hasBean("defaultParameterRenderer");
+            assertThat(context).hasBean("textParameterRenderer");
+            assertThat(context).hasBean("booleanParameterRenderer");
+            assertThat(context).hasBean("dateParameterRenderer");
+            assertThat(context.getBeansOfType(ParameterRenderer.class)).hasSize(4);
         });
     }
 
@@ -54,6 +68,15 @@ class CommandsSessionBotAutoConfigurationTest {
             assertThat(context).hasNotFailed();
             assertThat(context).hasSingleBean(AuthInterceptor.class);
             assertThat(context.getBean(AuthInterceptor.class)).isSameAs(custom);
+        });
+    }
+
+    @Test
+    void allowsDownstreamToOverrideDefaultParameterRenderer() {
+        ParameterRenderer custom = request -> Mono.empty();
+        activeRunner.withBean("defaultParameterRenderer", ParameterRenderer.class, () -> custom).run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context.getBean("defaultParameterRenderer", ParameterRenderer.class)).isSameAs(custom);
         });
     }
 }

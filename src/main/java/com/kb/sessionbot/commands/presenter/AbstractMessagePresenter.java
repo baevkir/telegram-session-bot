@@ -28,7 +28,7 @@ public abstract class AbstractMessagePresenter<S> implements  BotMethodPresenter
                 .parseMode(parseMode(source, context));
             var keyboard = buildKeyboard(source, context);
             if (keyboard != null) {
-                builder.replyMarkup(InlineKeyboardMarkup.builder().keyboard(buildKeyboard(source, context)).build());
+                builder.replyMarkup(InlineKeyboardMarkup.builder().keyboard(keyboard).build());
             }
             sink.next(builder.build());
             sink.complete();

@@ -67,7 +67,6 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
         this.telegramClient = telegramClient;
     }
 
-
     public void sendMessage(PartialBotApiMethod<?> message) {
         messagesSink.emitNext(message, Sinks.EmitFailureHandler.busyLooping(Duration.ofSeconds(1)));
     }
@@ -92,7 +91,10 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
                     .map(UpdateWrapper::wrap)
                     .groupBy(UpdateWrapper::getChatId)
                     .flatMap(updates -> this.handleUpdates(updates.publishOn(Schedulers.boundedElastic()))
-                        .onErrorResume(error -> errorHandler.handle(error).doOnNext(this::executeMessage)))
+                        .onErrorResume(error -> {
+                            log.warn("Handling pipeline error in a chat group", error);
+                            return errorHandler.handle(error).doOnNext(this::executeMessage);
+                        }))
                     .mergeWith(messagesSink.asFlux().publishOn(Schedulers.boundedElastic()).doOnNext(this::executeMessage))
             ).subscribe(
                 message -> { },

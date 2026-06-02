@@ -85,7 +85,7 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
             ).subscribe();
     }
 
-    private Flux<PartialBotApiMethod<?>> handleUpdates(Flux<UpdateWrapper> updates) {
+    Flux<PartialBotApiMethod<?>> handleUpdates(Flux<UpdateWrapper> updates) {
         Assert.notNull(updates, "Updates is null.");
         return updates
             .scanWith(CommandContext::empty, (context, update) -> {

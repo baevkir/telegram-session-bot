@@ -14,6 +14,13 @@ import org.telegram.telegrambots.longpolling.util.LongPollingSingleThreadUpdateC
 import org.telegram.telegrambots.meta.api.methods.botapimethods.BotApiMethod;
 import org.telegram.telegrambots.meta.api.methods.botapimethods.PartialBotApiMethod;
 import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands;
+import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
+import org.telegram.telegrambots.meta.api.methods.send.SendDocument;
+import org.telegram.telegrambots.meta.api.methods.send.SendVideo;
+import org.telegram.telegrambots.meta.api.methods.send.SendAudio;
+import org.telegram.telegrambots.meta.api.methods.send.SendVoice;
+import org.telegram.telegrambots.meta.api.methods.send.SendSticker;
+import org.telegram.telegrambots.meta.api.methods.send.SendAnimation;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.commands.BotCommand;
@@ -135,15 +142,29 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
             });
     }
 
+    @SuppressWarnings("unchecked")
     private <T extends Serializable> T executeMessage(PartialBotApiMethod<T> message) {
         try {
-            if (message instanceof BotApiMethod<T> botApiMethod) {
-                log.debug("Executing {}", botApiMethod.getClass().getSimpleName());
-                return telegramClient.execute(botApiMethod);
-            }
-            throw new UnsupportedOperationException("Message type " + message.getClass().getSimpleName() + " is not supported yet");
+            log.debug("Executing {}", message.getClass().getSimpleName());
+            return switch (message) {
+                case BotApiMethod<?> botApiMethod -> (T) telegramClient.execute((BotApiMethod<T>) botApiMethod);
+                case SendPhoto sendPhoto -> (T) telegramClient.execute(sendPhoto);
+                case SendDocument sendDocument -> (T) telegramClient.execute(sendDocument);
+                case SendVideo sendVideo -> (T) telegramClient.execute(sendVideo);
+                case SendAudio sendAudio -> (T) telegramClient.execute(sendAudio);
+                case SendVoice sendVoice -> (T) telegramClient.execute(sendVoice);
+                case SendSticker sendSticker -> (T) telegramClient.execute(sendSticker);
+                case SendAnimation sendAnimation -> (T) telegramClient.execute(sendAnimation);
+                default -> {
+                    log.warn("Unsupported message type {}; routing through error handler", message.getClass().getSimpleName());
+                    errorHandler.handle(new UnsupportedOperationException(
+                        "Message type " + message.getClass().getSimpleName() + " is not supported"))
+                        .subscribe(this::executeMessage);
+                    yield null;
+                }
+            };
         } catch (TelegramApiException e) {
-            log.error("Cannot execute message", e);
+            log.error("Cannot execute message in chat (type={})", message.getClass().getSimpleName(), e);
             return null;
         }
     }

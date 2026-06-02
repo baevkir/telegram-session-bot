@@ -6,7 +6,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>2.4.5</version>
+        <version>3.5.14</version>
     </parent>
 
     <groupId>com.kb</groupId>
@@ -16,12 +16,11 @@
     <name>telegram-session-bot</name>
 
     <properties>
-        <java.version>11</java.version>
+        <java.version>21</java.version>
         <telegram-bot.version>6.8.0</telegram-bot.version>
         <guava.version>33.0.0-jre</guava.version>
         <commons-collections4.version>4.1</commons-collections4.version>
-        <commons-lang3.version>3.10</commons-lang3.version>
-        <jackson.version>2.11.0.rc1</jackson.version>
+        <commons-lang3.version>3.18.0</commons-lang3.version>
         <github.maven-plugin>0.12</github.maven-plugin>
     </properties>
 
@@ -64,6 +63,13 @@
             <groupId>org.telegram</groupId>
             <artifactId>telegrambots</artifactId>
             <version>${telegram-bot.version}</version>
+            <exclusions>
+                <!-- legacy javax JAXB; Jersey 3.x uses jackson-module-jakarta-xmlbind-annotations -->
+                <exclusion>
+                    <groupId>com.fasterxml.jackson.module</groupId>
+                    <artifactId>jackson-module-jaxb-annotations</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.telegram</groupId>
@@ -103,6 +109,11 @@
             <artifactId>assertj-core</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
 
     </dependencies>
 
@@ -112,8 +123,8 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
-                    <source>11</source>
-                    <target>11</target>
+                    <source>21</source>
+                    <target>21</target>
                     <annotationProcessorPaths>
                         <path>
                             <groupId>org.projectlombok</groupId>

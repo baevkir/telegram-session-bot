@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A **Spring Boot auto-configuration starter** (`com.kb:telegram-session-bot`) for building Telegram bots whose commands behave like multi-step conversations. A command can ask the user for missing arguments one at a time (via inline keyboards or text replies); the framework accumulates those answers into a per-chat session until the command has everything it needs to run. Published as a Maven artifact to a GitHub-hosted repo (`baevkir/library-project`, `mvn-repo` branch).
 
-Java 11, Maven, Project Reactor, Lombok, `org.telegram:telegrambots` 6.8.0.
+Java 21, Spring Boot 3.5, Maven, Project Reactor, Lombok, `org.telegram:telegrambots` 6.8.0.
 
 ## Build & test
 
@@ -22,7 +22,7 @@ Note: `.gitignore` references Gradle, but this project builds with Maven (`pom.x
 
 ## How it wires up (auto-configuration)
 
-`src/main/resources/META-INF/spring.factories` → `CommandsSessionBotConfiguration`, which is `@ConditionalOnProperty(prefix = "sessionbot.telegram", value = {"token", "bot-username"})`. A consuming app activates the bot purely by setting:
+`src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` → `CommandsSessionBotConfiguration` (an `@AutoConfiguration` class, registered via the Spring Boot 3 imports mechanism), which is `@ConditionalOnProperty(prefix = "sessionbot.telegram", value = {"token", "bot-username"})`. A consuming app activates the bot purely by setting:
 
 ```
 sessionbot.telegram.token=...

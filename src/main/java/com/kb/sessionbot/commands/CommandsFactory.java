@@ -2,7 +2,7 @@ package com.kb.sessionbot.commands;
 
 import lombok.extern.slf4j.Slf4j;
 
-import javax.annotation.PostConstruct;
+import jakarta.annotation.PostConstruct;
 import java.util.*;
 
 @Slf4j

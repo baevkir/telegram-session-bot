@@ -62,6 +62,7 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
 
     @Override
     public void consume(Update update) {
+        log.debug("Received update id={}", update.getUpdateId());
         updatesSink.tryEmitNext(update);
     }
 
@@ -101,9 +102,11 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
                 if (context.isEmpty()) {
                     return Flux.from(commandsFactory.getHelpCommand().process(context)).doOnNext(this::executeMessage);
                 }
+                log.debug("Dispatching command '{}' in chat {} (state={})", context.getCommand(), context.getChatId(), context.getState());
                 return authInterceptor.intercept(context)
                     .flatMapMany(result -> {
                         if (!result) {
+                            log.debug("Auth rejected for command '{}' in chat {}", context.getCommand(), context.getChatId());
                             return Flux.error(new BotAuthException(context, "User " + context.getCommandUpdate().getFrom().getUserName()+ " is unauthorized to use bot."));
                         }
                         return commandsFactory.getCommand(context.getCommand()).process(context);
@@ -123,6 +126,7 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
     private <T extends Serializable> T executeMessage(PartialBotApiMethod<T> message) {
         try {
             if (message instanceof BotApiMethod<T> botApiMethod) {
+                log.debug("Executing {}", botApiMethod.getClass().getSimpleName());
                 return telegramClient.execute(botApiMethod);
             }
             throw new UnsupportedOperationException("Message type " + message.getClass().getSimpleName() + " is not supported yet");

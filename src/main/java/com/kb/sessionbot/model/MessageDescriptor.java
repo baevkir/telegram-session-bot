@@ -33,6 +33,7 @@ public class MessageDescriptor {
         parser.command = parseCommand(text);
         parser.answers = parseAnswers(text);
         parser.dynamicParams = parseDynamicParams(text);
+        log.debug("Parsed '{}' -> command={} answers={} params={}", text, parser.command, parser.answers, parser.dynamicParams);
         return parser;
     }
 

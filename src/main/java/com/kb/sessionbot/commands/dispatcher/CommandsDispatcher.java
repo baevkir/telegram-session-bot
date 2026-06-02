@@ -54,6 +54,7 @@ public class CommandsDispatcher {
 
     public InvocationResult invoke(CommandContext context) {
         var invocationResult = new InvocationResult();
+        log.debug("Invoking command '{}' with answers {}", commandId, context.getAnswers());
 
         try {
             var methodDescriptor = findInvokerMethod(context, invocationResult);
@@ -85,6 +86,7 @@ public class CommandsDispatcher {
                             invocationResult.addArgument(null);
                             args.add(null);
                         } else {
+                            log.debug("Parameter '{}' missing for command '{}', rendering prompt", parameter.getName(), commandId);
                             invocationResult.invocationArgument = getRenderer(parameter).render(
                                 ParameterRequest.builder()
                                     .index(index)
@@ -133,6 +135,7 @@ public class CommandsDispatcher {
                     .onErrorMap(error -> new BotCommandException(context, error));
             }
         } catch (Throwable error) {
+            log.debug("Command '{}' invocation raised {}", commandId, error.toString());
             invocationResult.invocationError = new BotCommandException(context, error);
         }
 
@@ -171,6 +174,7 @@ public class CommandsDispatcher {
     private MethodDescriptor findInvokerMethod(CommandContext commandContext, InvocationResult invocationResult) {
         return methodMatcher.getMatchingMethod(commandContext).orElseGet(() -> {
             var options = CommandBuilder.create().addAnswers(commandContext.getAnswers()).build();
+            log.debug("No method matched command '{}' with answers {}, rendering options prompt", commandContext.getCommand(), commandContext.getAnswers());
             invocationResult.invocationArgument = getDefaultRenderer().render(
                 ParameterRequest.builder()
                     .context(commandContext)

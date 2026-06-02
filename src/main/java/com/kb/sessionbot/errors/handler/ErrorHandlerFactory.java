@@ -31,6 +31,7 @@ public class ErrorHandlerFactory {
         for (Throwable currentError : Lists.reverse(getThrowableList(exception))) {
             ErrorHandler<Throwable> errorHandler = errorHandlerMap.get(currentError.getClass());
             if (errorHandler != null) {
+                log.debug("Handling {} with {}", currentError.getClass().getSimpleName(), errorHandler.getClass().getSimpleName());
                 return errorHandler.handle(currentError);
             }
         }

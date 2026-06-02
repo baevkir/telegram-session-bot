@@ -31,6 +31,7 @@ public class DispatcherBotCommand implements IBotCommand {
 
     public Publisher<? extends PartialBotApiMethod<?>> process(CommandContext commandContext) {
         Assert.isTrue(!ContextState.close.equals(commandContext.getState()), "Cannot process closed context");
+        log.debug("Processing command '{}' (state={})", commandsDispatcher.getCommandId(), commandContext.getState());
         var invocationResult = commandsDispatcher.invoke(commandContext);
         if (invocationResult.hasErrors()) {
             return Mono.error(invocationResult.getInvocationError());
@@ -43,9 +44,11 @@ public class DispatcherBotCommand implements IBotCommand {
         }
         if (invocationResult.getInvocationArgument() != null) {
             commandContext.startProgress();
+            log.debug("Command '{}' needs more input, prompting user", commandsDispatcher.getCommandId());
             return invocationResult.getInvocationArgument();
         }
         commandContext.close();
+        log.debug("Command '{}' complete, cleaning up question/answer messages", commandsDispatcher.getCommandId());
         var removeOldMessages = Flux.<Integer>create(sink -> {
                 commandContext.getQuestionMessages().stream()
                     .map(Message::getMessageId)

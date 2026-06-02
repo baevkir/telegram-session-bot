@@ -19,6 +19,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.telegram.telegrambots.meta.api.methods.botapimethods.BotApiMethod;
@@ -31,6 +32,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 
@@ -76,7 +78,7 @@ class CommandsSessionBotTest {
     private static final AuthInterceptor ALLOW = ctx -> reactor.core.publisher.Mono.just(true);
     private static final AuthInterceptor DENY = ctx -> reactor.core.publisher.Mono.just(false);
 
-    @DisplayName("command update completes and emits SendMessage then DeleteMessage cleanup")
+    @DisplayName("command update completes and emits its SendMessage response")
     @Test
     void commandStartsFreshContext() {
         var bot = bot(ALLOW);
@@ -88,6 +90,20 @@ class CommandsSessionBotTest {
                 assertThat(((SendMessage) m).getText()).isEqualTo("buy:book");
             })
             .verifyComplete();
+    }
+
+    @DisplayName("completed command executes its response against the client (regression: close-state messages must be sent)")
+    @Test
+    void completedCommandExecutesItsResponse() throws Exception {
+        var bot = bot(ALLOW);
+        var updates = Flux.just(Fixtures.wrap(Fixtures.messageUpdate(1, Fixtures.CHAT_ID, 100, "/order?buy&book")));
+
+        StepVerifier.create(bot.handleUpdates(updates)).expectNextCount(1).verifyComplete();
+
+        var executed = ArgumentCaptor.forClass(BotApiMethod.class);
+        verify(telegramClient, atLeastOnce()).execute(executed.capture());
+        assertThat(executed.getAllValues())
+            .anyMatch(m -> m instanceof SendMessage && "buy:book".equals(((SendMessage) m).getText()));
     }
 
     @DisplayName("non-command answer appends to the in-progress context and completes it")

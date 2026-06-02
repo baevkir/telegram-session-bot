@@ -11,7 +11,7 @@ public class BotAuthErrorHandler implements ErrorHandler<BotAuthException> {
 
     @Override
     public Mono<? extends PartialBotApiMethod<?>> handle(BotAuthException exception) {
-        log.error("Authentication failure", exception);
+        log.warn("Authentication rejected in chat {}: {}", exception.getContext().getChatId(), exception.getMessage());
         return Mono.fromSupplier(() ->
                 SendMessage
                         .builder()

@@ -3,6 +3,7 @@ package com.kb.sessionbot.commands.dispatcher;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.kb.sessionbot.commands.CommandBuilder;
+import com.kb.sessionbot.commands.CommandConstants;
 import com.kb.sessionbot.commands.dispatcher.annotations.BotCommand;
 import com.kb.sessionbot.commands.dispatcher.parameters.ParameterRenderer;
 import com.kb.sessionbot.commands.dispatcher.parameters.ParameterRequest;
@@ -62,9 +63,8 @@ public class CommandsDispatcher {
                 if (invocationResult.invocationArgument != null) {
                     return invocationResult;
                 }
-                throw new RuntimeException(
-                    "Cannot find command method for " + context.getCommand() + " with arguments " + context.getAnswers()
-                );
+                throw new BotCommandException(context, new IllegalStateException(
+                    "Cannot find command method for " + context.getCommand() + " with arguments " + context.getAnswers()));
             }
             invocationResult.invocationMethod = methodDescriptor.getMethod();
 
@@ -117,6 +117,12 @@ public class CommandsDispatcher {
                     args.add(context.getDynamicParams());
                 } else if (CommandContext.class.equals(parameter.getParameterType())) {
                     args.add(context);
+                } else {
+                    throw new BotCommandException(context, new IllegalArgumentException(String.format(
+                        "Cannot resolve parameter '%s' of type %s in command '%s'. "
+                            + "Annotate it with @Parameter or use a supported auto-injection type "
+                            + "(UpdateWrapper command/update, Update update, User from, String chatId, DynamicParameters, CommandContext).",
+                        parameter.getName(), parameter.getParameterType().getName(), commandId)));
                 }
 
             }
@@ -134,8 +140,11 @@ public class CommandsDispatcher {
                     .flatMapMany(result -> InvocationResultResolver.of(result).resolve())
                     .onErrorMap(error -> new BotCommandException(context, error));
             }
+        } catch (BotCommandException error) {
+            log.debug("Command '{}' invocation failed in chat {}", commandId, context.getChatId(), error);
+            invocationResult.invocationError = error;
         } catch (Throwable error) {
-            log.debug("Command '{}' invocation raised {}", commandId, error.toString());
+            log.debug("Command '{}' invocation failed in chat {}", commandId, context.getChatId(), error);
             invocationResult.invocationError = new BotCommandException(context, error);
         }
 
@@ -151,7 +160,7 @@ public class CommandsDispatcher {
         if (argumentIndex < answers.size()) {
             return Optional.ofNullable(answers.get(argumentIndex))
                 .map(answer -> {
-                    if (answer.equals("null")) {
+                    if (CommandConstants.NULL_ANSWER.equals(answer)) {
                         return null;
                     }
                    return mapper.convertValue(answer, parameter.getParameterType());

@@ -99,6 +99,20 @@ class CommandsDispatcherTest {
                 .assertNext(m -> assertThat(((SendMessage) m).getText()).isEqualTo("note:hello/null"))
                 .verifyComplete();
         }
+
+        @Test
+        @DisplayName("the NULL_ANSWER sentinel decodes to a null (absent) argument, not the literal text \"null\"")
+        void nullAnswerSentinelDecodesToNull() {
+            // note&{required}&{optional}; optional supplied as the NULL_ANSWER sentinel -> decoded as null.
+            // A null-decoded answer collapses to an empty Optional in getArgument, so the optional is
+            // treated as absent and re-prompted (rather than binding the literal string "null").
+            var result = orderDispatcher.invoke(ctx("/order?note&hello&" + com.kb.sessionbot.commands.CommandConstants.NULL_ANSWER));
+            assertThat(result.hasErrors()).isFalse();
+            assertThat(result.getInvocation()).isNull();
+            StepVerifier.create(result.getInvocationArgument())
+                .assertNext(m -> assertThat(((SendMessage) m).getText()).contains("optional"))
+                .verifyComplete();
+        }
     }
 
     @Nested
@@ -175,6 +189,52 @@ class CommandsDispatcherTest {
             StepVerifier.create(result.getInvocationArgument())
                 .assertNext(m -> assertThat(((SendMessage) m).getText()).contains("order"))
                 .verifyComplete();
+        }
+    }
+
+    @Nested
+    @DisplayName("invocation errors route to BotCommandException")
+    class ErrorRouting {
+
+        @Test
+        void invocationErrorIsWrappedAsBotCommandException() {
+            // qty binds a Long; a non-numeric answer makes Jackson conversion fail synchronously
+            // inside invoke(), which the catch block wraps as a BotCommandException carrying the context.
+            var result = orderDispatcher.invoke(ctx("/order?qty&not-a-number"));
+            assertThat(result.hasErrors()).isTrue();
+            assertThat(result.getInvocationError())
+                .isInstanceOf(com.kb.sessionbot.errors.exception.BotCommandException.class);
+        }
+
+        @Test
+        void routedThroughErrorHandlerFactoryProducesSendMessage() {
+            var factory = new com.kb.sessionbot.errors.handler.ErrorHandlerFactory(
+                java.util.List.<com.kb.sessionbot.errors.handler.ErrorHandler<?>>of(
+                    new com.kb.sessionbot.errors.handler.BotCommandErrorHandler(),
+                    new com.kb.sessionbot.errors.handler.BotAuthErrorHandler()));
+            factory.init();
+            var ex = new com.kb.sessionbot.errors.exception.BotCommandException(
+                ctx("/order?unsupported"),
+                new IllegalStateException("Cannot find command method for order with arguments [unsupported]"));
+            StepVerifier.create(factory.handle(ex))
+                .assertNext(m -> assertThat(m).isInstanceOf(SendMessage.class))
+                .verifyComplete();
+        }
+    }
+
+    @Nested
+    @DisplayName("unsupported auto-injection parameter")
+    class UnsupportedInjection {
+
+        @Test
+        void unmatchedParameterYieldsClearBotCommandException() {
+            var dispatcher = new CommandsDispatcher(new com.kb.sessionbot.fixtures.BadInjectionCommand(), context);
+            var result = dispatcher.invoke(ctx("/badinject?go"));
+            assertThat(result.hasErrors()).isTrue();
+            assertThat(result.getInvocationError())
+                .isInstanceOf(com.kb.sessionbot.errors.exception.BotCommandException.class);
+            assertThat(result.getInvocationError().getCause())
+                .hasMessageContaining("when");
         }
     }
 }

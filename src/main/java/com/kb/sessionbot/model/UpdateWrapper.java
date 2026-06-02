@@ -36,7 +36,7 @@ public class UpdateWrapper {
             CallbackQuery callbackQuery = update.getCallbackQuery();
             return String.valueOf(callbackQuery.getMessage().getChatId());
         }
-        log.error("Cannot get chat id from update.{}", update);
+        log.error("Cannot get chat id from update id={} (type={})", update.getUpdateId(), describeType(update));
         throw new RuntimeException("Cannot get chat id from update");
     }
 
@@ -85,5 +85,13 @@ public class UpdateWrapper {
             return Optional.of(update.getCallbackQuery().getData());
         }
         return Optional.empty();
+    }
+
+    private static String describeType(Update update) {
+        if (update.hasMessage()) return "message";
+        if (update.hasCallbackQuery()) return "callbackQuery";
+        if (update.hasEditedMessage()) return "editedMessage";
+        if (update.hasInlineQuery()) return "inlineQuery";
+        return "other";
     }
 }

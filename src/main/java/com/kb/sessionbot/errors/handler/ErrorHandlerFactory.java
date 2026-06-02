@@ -5,8 +5,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.telegram.telegrambots.meta.api.methods.botapimethods.PartialBotApiMethod;
 import reactor.core.publisher.Mono;
 
+import org.springframework.core.GenericTypeResolver;
+
 import jakarta.annotation.PostConstruct;
-import java.lang.reflect.ParameterizedType;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,8 +44,12 @@ public class ErrorHandlerFactory {
     @SuppressWarnings("unchecked")
     public void init() {
         errorHandlers.forEach(errorHandler -> {
-            Class<Throwable> type = ((Class<Throwable>) ((ParameterizedType) errorHandler.getClass().getGenericInterfaces()[0]).getActualTypeArguments()[0]);
-            errorHandlerMap.put(type, (ErrorHandler<Throwable>) errorHandler);
+            Class<?> type = GenericTypeResolver.resolveTypeArgument(errorHandler.getClass(), ErrorHandler.class);
+            if (type == null) {
+                log.warn("Cannot resolve exception type for handler {}; skipping registration", errorHandler.getClass().getName());
+                return;
+            }
+            errorHandlerMap.put((Class<Throwable>) type, (ErrorHandler<Throwable>) errorHandler);
         });
     }
 }

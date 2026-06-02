@@ -14,16 +14,27 @@ import org.telegram.telegrambots.longpolling.util.LongPollingSingleThreadUpdateC
 import org.telegram.telegrambots.meta.api.methods.botapimethods.BotApiMethod;
 import org.telegram.telegrambots.meta.api.methods.botapimethods.PartialBotApiMethod;
 import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands;
+import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
+import org.telegram.telegrambots.meta.api.methods.send.SendDocument;
+import org.telegram.telegrambots.meta.api.methods.send.SendVideo;
+import org.telegram.telegrambots.meta.api.methods.send.SendAudio;
+import org.telegram.telegrambots.meta.api.methods.send.SendVoice;
+import org.telegram.telegrambots.meta.api.methods.send.SendSticker;
+import org.telegram.telegrambots.meta.api.methods.send.SendAnimation;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.commands.BotCommand;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
+import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
+import reactor.core.scheduler.Schedulers;
 
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import java.io.Serializable;
+import java.time.Duration;
 
 /**
  * Reactive long-polling bot. Incoming updates are grouped per chat and folded into an
@@ -40,6 +51,7 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
     private final TelegramClient telegramClient;
     private final Sinks.Many<Update> updatesSink = Sinks.many().unicast().onBackpressureBuffer();
     private final Sinks.Many<PartialBotApiMethod<?>> messagesSink = Sinks.many().unicast().onBackpressureBuffer();
+    private Disposable subscription;
 
     public CommandsSessionBot(
         CommandsFactory commandsFactory,
@@ -55,15 +67,14 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
         this.telegramClient = telegramClient;
     }
 
-
     public void sendMessage(PartialBotApiMethod<?> message) {
-        messagesSink.tryEmitNext(message);
+        messagesSink.emitNext(message, Sinks.EmitFailureHandler.busyLooping(Duration.ofSeconds(1)));
     }
 
     @Override
     public void consume(Update update) {
         log.debug("Received update id={}", update.getUpdateId());
-        updatesSink.tryEmitNext(update);
+        updatesSink.emitNext(update, Sinks.EmitFailureHandler.FAIL_FAST);
     }
 
     @PostConstruct
@@ -74,15 +85,28 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
             .collectList()
             .map(commands -> SetMyCommands.builder().commands(commands).build());
 
-        Flux.concat(
+        this.subscription = Flux.concat(
                 setMyCommands.doOnNext(this::executeMessage),
                 updatesSink.asFlux()
                     .map(UpdateWrapper::wrap)
                     .groupBy(UpdateWrapper::getChatId)
-                    .flatMap(updates -> this.handleUpdates(updates).onErrorResume(error -> errorHandler.handle(error).doOnNext(this::executeMessage)))
-                    .mergeWith(messagesSink.asFlux().doOnNext(this::executeMessage))
-                    .retry()
-            ).subscribe();
+                    .flatMap(updates -> this.handleUpdates(updates.publishOn(Schedulers.boundedElastic()))
+                        .onErrorResume(error -> {
+                            log.warn("Handling pipeline error in a chat group", error);
+                            return errorHandler.handle(error).doOnNext(this::executeMessage);
+                        }))
+                    .mergeWith(messagesSink.asFlux().publishOn(Schedulers.boundedElastic()).doOnNext(this::executeMessage))
+            ).subscribe(
+                message -> { },
+                error -> log.error("Bot pipeline terminated unexpectedly", error)
+            );
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        if (subscription != null && !subscription.isDisposed()) {
+            subscription.dispose();
+        }
     }
 
     Flux<PartialBotApiMethod<?>> handleUpdates(Flux<UpdateWrapper> updates) {
@@ -98,7 +122,7 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
                 return context.addUpdate(update);
             })
             .skip(1)
-            .flatMap(context -> {
+            .concatMap(context -> {
                 if (context.isEmpty()) {
                     return Flux.from(commandsFactory.getHelpCommand().process(context)).doOnNext(this::executeMessage);
                 }
@@ -106,8 +130,10 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
                 return authInterceptor.intercept(context)
                     .flatMapMany(result -> {
                         if (!result) {
-                            log.debug("Auth rejected for command '{}' in chat {}", context.getCommand(), context.getChatId());
-                            return Flux.error(new BotAuthException(context, "User " + context.getCommandUpdate().getFrom().getUserName()+ " is unauthorized to use bot."));
+                            var from = context.getCommandUpdate().getFrom();
+                            var username = from != null ? from.getUserName() : "unknown";
+                            log.debug("Auth rejected for command '{}' in chat {} (user={})", context.getCommand(), context.getChatId(), username);
+                            return Flux.error(new BotAuthException(context, "User " + username + " is unauthorized to use bot."));
                         }
                         return commandsFactory.getCommand(context.getCommand()).process(context);
                     })
@@ -120,15 +146,29 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
             });
     }
 
+    @SuppressWarnings("unchecked")
     private <T extends Serializable> T executeMessage(PartialBotApiMethod<T> message) {
         try {
-            if (message instanceof BotApiMethod<T> botApiMethod) {
-                log.debug("Executing {}", botApiMethod.getClass().getSimpleName());
-                return telegramClient.execute(botApiMethod);
-            }
-            throw new UnsupportedOperationException("Message type " + message.getClass().getSimpleName() + " is not supported yet");
+            log.debug("Executing {}", message.getClass().getSimpleName());
+            return switch (message) {
+                case BotApiMethod<?> botApiMethod -> telegramClient.execute((BotApiMethod<T>) botApiMethod);
+                case SendPhoto sendPhoto -> (T) telegramClient.execute(sendPhoto);
+                case SendDocument sendDocument -> (T) telegramClient.execute(sendDocument);
+                case SendVideo sendVideo -> (T) telegramClient.execute(sendVideo);
+                case SendAudio sendAudio -> (T) telegramClient.execute(sendAudio);
+                case SendVoice sendVoice -> (T) telegramClient.execute(sendVoice);
+                case SendSticker sendSticker -> (T) telegramClient.execute(sendSticker);
+                case SendAnimation sendAnimation -> (T) telegramClient.execute(sendAnimation);
+                default -> {
+                    log.warn("Unsupported message type {}; routing through error handler", message.getClass().getSimpleName());
+                    errorHandler.handle(new UnsupportedOperationException(
+                        "Message type " + message.getClass().getSimpleName() + " is not supported"))
+                        .subscribe(this::executeMessage);
+                    yield null;
+                }
+            };
         } catch (TelegramApiException e) {
-            log.error("Cannot execute message", e);
+            log.error("Cannot execute message in chat (type={})", message.getClass().getSimpleName(), e);
             return null;
         }
     }

@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -56,7 +57,7 @@ public class CommandBuilder {
 
     public CommandBuilder addAnswer(LocalDate answer) {
         if (answer == null) {
-            answers.add(null);
+            answers.add(NULL_ANSWER);
         } else {
             answers.add(answer.format(DateTimeFormatter.ISO_DATE));
         }
@@ -116,9 +117,12 @@ public class CommandBuilder {
                 })
                 .collect(Collectors.joining(PARAMETER_SEPARATOR)));
         }
-        if (result.toString().getBytes().length > 64) {
-          log.warn("Command length is greater then 64 bytes and cannot be applied to to callback data. "  + result);
+        var callback = result.toString();
+        var byteLength = callback.getBytes(StandardCharsets.UTF_8).length;
+        if (byteLength > MAX_CALLBACK_BYTES) {
+            log.warn("Callback data is {} bytes, exceeding the {}-byte Telegram limit and cannot be used as callback data.",
+                byteLength, MAX_CALLBACK_BYTES);
         }
-        return result.toString();
+        return callback;
     }
 }

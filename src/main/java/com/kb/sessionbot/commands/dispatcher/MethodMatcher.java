@@ -55,7 +55,15 @@ public class MethodMatcher {
 
                 return builder.parameters(parameters).build();
             })
-            .collect(Collectors.toMap(MethodDescriptor::getArguments, Function.identity()));
+            .collect(Collectors.toMap(
+                MethodDescriptor::getArguments,
+                Function.identity(),
+                (existing, duplicate) -> {
+                    throw new IllegalStateException(String.format(
+                        "Duplicate @CommandMethod template '%s' in %s",
+                        existing.getArguments(), command.getClass().getName()));
+                },
+                LinkedHashMap::new));
 
         return new MethodMatcher(methods);
     }

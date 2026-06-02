@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class MethodMatcherTest {
 
@@ -74,6 +75,33 @@ class MethodMatcherTest {
             var match = echoMatcher.getMatchingMethod(contextWith("/echo?wrapCommand"));
             assertThat(match).isPresent();
             assertThat(match.get().getArguments()).isEqualTo("wrapCommand");
+        }
+    }
+
+    @Nested
+    @DisplayName("duplicate template detection")
+    class DuplicateTemplates {
+
+        @com.kb.sessionbot.commands.dispatcher.annotations.BotCommand(value = "dup", description = "dup")
+        static class DuplicateCommand {
+            @com.kb.sessionbot.commands.dispatcher.annotations.CommandMethod(arguments = "buy&{x}")
+            public org.telegram.telegrambots.meta.api.methods.send.SendMessage one(
+                @com.kb.sessionbot.commands.dispatcher.annotations.Parameter("x") String x) {
+                return org.telegram.telegrambots.meta.api.methods.send.SendMessage.builder().chatId("1").text(x).build();
+            }
+            @com.kb.sessionbot.commands.dispatcher.annotations.CommandMethod(arguments = "buy&{x}")
+            public org.telegram.telegrambots.meta.api.methods.send.SendMessage two(
+                @com.kb.sessionbot.commands.dispatcher.annotations.Parameter("x") String x) {
+                return org.telegram.telegrambots.meta.api.methods.send.SendMessage.builder().chatId("1").text(x).build();
+            }
+        }
+
+        @Test
+        void duplicateTemplateThrowsNamingClassAndTemplate() {
+            assertThatThrownBy(() -> MethodMatcher.create(new DuplicateCommand()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("DuplicateCommand")
+                .hasMessageContaining("buy&{x}");
         }
     }
 }

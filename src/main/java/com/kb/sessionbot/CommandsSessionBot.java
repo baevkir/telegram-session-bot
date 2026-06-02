@@ -112,11 +112,8 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
                         return commandsFactory.getCommand(context.getCommand()).process(context);
                     })
                     .doOnNext(message -> {
-                        if (!ContextState.progress.equals(context.getState())) {
-                            return;
-                        }
                         var result = this.executeMessage(message);
-                        if (result instanceof Message resultMessage ) {
+                        if (result instanceof Message resultMessage && ContextState.progress.equals(context.getState())) {
                             context.addQuestionMessage(resultMessage);
                         }
                     });

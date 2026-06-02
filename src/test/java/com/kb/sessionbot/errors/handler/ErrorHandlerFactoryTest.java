@@ -51,6 +51,16 @@ class ErrorHandlerFactoryTest {
     }
 
     @Test
+    @DisplayName("a root-cause message containing '{}' is emitted verbatim (constant log template)")
+    void rootCauseWithBracesIsEmittedVerbatim() {
+        var msg = "bad value {} not allowed";
+        var ex = new BotCommandException(context, new IllegalStateException(msg));
+        StepVerifier.create(factory.handle(ex))
+            .assertNext(m -> assertThat(((SendMessage) m).getText()).isEqualTo(msg))
+            .verifyComplete();
+    }
+
+    @Test
     @DisplayName("unhandled exception type yields empty (swallowed)")
     void noHandlerYieldsEmpty() {
         StepVerifier.create(factory.handle(new IllegalStateException("unmapped")))

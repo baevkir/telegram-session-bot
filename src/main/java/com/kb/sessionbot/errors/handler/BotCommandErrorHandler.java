@@ -16,7 +16,7 @@ public class BotCommandErrorHandler implements ErrorHandler<BotCommandException>
     public Mono<? extends PartialBotApiMethod<?>> handle(BotCommandException exception) {
         String botMessage = Optional.ofNullable(ExceptionUtils.getRootCause(exception).getMessage())
                 .orElse("Error during chat bot command. Please try again letter.");
-        log.error(botMessage, exception);
+        log.error("Command failed: {}", botMessage, exception);
         return Mono.fromSupplier(() ->
                 SendMessage
                         .builder()

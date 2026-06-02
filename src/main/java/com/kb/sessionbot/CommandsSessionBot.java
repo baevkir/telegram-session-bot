@@ -151,7 +151,7 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
         try {
             log.debug("Executing {}", message.getClass().getSimpleName());
             return switch (message) {
-                case BotApiMethod<?> botApiMethod -> (T) telegramClient.execute((BotApiMethod<T>) botApiMethod);
+                case BotApiMethod<?> botApiMethod -> telegramClient.execute((BotApiMethod<T>) botApiMethod);
                 case SendPhoto sendPhoto -> (T) telegramClient.execute(sendPhoto);
                 case SendDocument sendDocument -> (T) telegramClient.execute(sendDocument);
                 case SendVideo sendVideo -> (T) telegramClient.execute(sendVideo);

@@ -2,13 +2,14 @@ package com.kb.sessionbot.commands.presenter;
 
 import com.kb.sessionbot.model.CommandContext;
 import org.reactivestreams.Publisher;
-import org.telegram.telegrambots.meta.api.methods.BotApiMethod;
+import org.telegram.telegrambots.meta.api.methods.botapimethods.BotApiMethod;
 import org.telegram.telegrambots.meta.api.methods.ParseMode;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageReplyMarkup;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
 import reactor.core.publisher.Flux;
 
 import java.util.List;
@@ -63,7 +64,7 @@ public abstract class AbstractMessagePresenter<S> implements  BotMethodPresenter
 
     protected abstract String buildText(S source, CommandContext context);
 
-    protected List<List<InlineKeyboardButton>> buildKeyboard(S source, CommandContext context) {
+    protected List<InlineKeyboardRow> buildKeyboard(S source, CommandContext context) {
         return null;
     }
 

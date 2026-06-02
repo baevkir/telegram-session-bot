@@ -18,9 +18,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
-import org.telegram.telegrambots.meta.TelegramBotsApi;
+import org.telegram.telegrambots.client.okhttp.OkHttpTelegramClient;
+import org.telegram.telegrambots.longpolling.TelegramBotsLongPollingApplication;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
-import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
+import org.telegram.telegrambots.meta.generics.TelegramClient;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
@@ -33,10 +34,17 @@ public class CommandsSessionBotConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public TelegramBotsApi telegramBotsApi(CommandsSessionBot bot) throws TelegramApiException {
-        TelegramBotsApi telegramBotsApi = new TelegramBotsApi(DefaultBotSession.class);
-        telegramBotsApi.registerBot(bot);
-        return telegramBotsApi;
+    public TelegramClient telegramClient(CommandsSessionBotProperties properties) {
+        return new OkHttpTelegramClient(properties.getToken());
+    }
+
+    @Bean(destroyMethod = "close")
+    @ConditionalOnMissingBean
+    public TelegramBotsLongPollingApplication telegramBotsApplication(
+            CommandsSessionBot bot, CommandsSessionBotProperties properties) throws TelegramApiException {
+        var application = new TelegramBotsLongPollingApplication();
+        application.registerBot(properties.getToken(), bot);
+        return application;
     }
 
     @Bean
@@ -44,8 +52,9 @@ public class CommandsSessionBotConfiguration {
             CommandsFactory commandsFactory,
             ErrorHandlerFactory errorHandler,
             AuthInterceptor authInterceptor,
-            CommandsSessionBotProperties properties) {
-        return new CommandsSessionBot(commandsFactory, authInterceptor, errorHandler, properties);
+            CommandsSessionBotProperties properties,
+            TelegramClient telegramClient) {
+        return new CommandsSessionBot(commandsFactory, authInterceptor, errorHandler, properties, telegramClient);
     }
 
 

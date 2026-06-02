@@ -8,10 +8,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.reactivestreams.Publisher;
 import org.springframework.context.ApplicationContext;
 import org.springframework.util.Assert;
-import org.telegram.telegrambots.meta.api.methods.PartialBotApiMethod;
+import org.telegram.telegrambots.meta.api.methods.botapimethods.PartialBotApiMethod;
 import org.telegram.telegrambots.meta.api.methods.updates.GetUpdates;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage;
-import org.telegram.telegrambots.meta.api.objects.Message;
+import org.telegram.telegrambots.meta.api.objects.message.MaybeInaccessibleMessage;
+import org.telegram.telegrambots.meta.api.objects.message.Message;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -53,7 +54,7 @@ public class DispatcherBotCommand implements IBotCommand {
 
                 commandContext.getUpdates().forEach(update -> {
                     update.getMessageId().ifPresent(sink::next);
-                    update.getCallbackMessage().map(Message::getMessageId).ifPresent(sink::next);
+                    update.getCallbackMessage().map(MaybeInaccessibleMessage::getMessageId).ifPresent(sink::next);
                 });
                 sink.complete();
             })

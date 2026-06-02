@@ -56,4 +56,25 @@ class ErrorHandlerFactoryTest {
         StepVerifier.create(factory.handle(new IllegalStateException("unmapped")))
             .verifyComplete();
     }
+
+    abstract static class BaseCommandHandler implements ErrorHandler<BotCommandException> { }
+
+    static class SubclassedCommandHandler extends BaseCommandHandler {
+        @Override
+        public reactor.core.publisher.Mono<? extends org.telegram.telegrambots.meta.api.methods.botapimethods.PartialBotApiMethod<?>> handle(BotCommandException exception) {
+            return reactor.core.publisher.Mono.fromSupplier(() ->
+                SendMessage.builder().chatId(exception.getContext().getChatId()).text("handled-by-subclass").build());
+        }
+    }
+
+    @Test
+    @DisplayName("resolves the exception type from a handler that declares ErrorHandler on a superclass")
+    void resolvesTypeArgumentThroughSuperclass() {
+        var factory = new ErrorHandlerFactory(List.<ErrorHandler<?>>of(new SubclassedCommandHandler()));
+        factory.init();
+        var ex = new BotCommandException(context, new IllegalStateException("boom"));
+        StepVerifier.create(factory.handle(ex))
+            .assertNext(m -> assertThat(((SendMessage) m).getText()).isEqualTo("handled-by-subclass"))
+            .verifyComplete();
+    }
 }

@@ -13,6 +13,11 @@ import java.util.Map;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getThrowableList;
 
+/**
+ * Routes a thrown error to the {@link ErrorHandler} registered for its exception type,
+ * walking the cause chain from the root outward. Logs and swallows the error when no
+ * handler matches.
+ */
 @Slf4j
 public class ErrorHandlerFactory {
     private final List<ErrorHandler<?>> errorHandlers;

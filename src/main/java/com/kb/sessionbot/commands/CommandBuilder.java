@@ -17,6 +17,11 @@ import java.util.stream.Collectors;
 
 import static com.kb.sessionbot.commands.CommandConstants.*;
 
+/**
+ * Builds the callback/command wire string ({@code /command?answer1&answer2#param:value})
+ * from a command, answers and dynamic parameters. Warns when the result exceeds Telegram's
+ * 64-byte callback-data limit.
+ */
 @Slf4j
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public class CommandBuilder {

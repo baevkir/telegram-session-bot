@@ -25,6 +25,11 @@ import reactor.core.publisher.Sinks;
 import jakarta.annotation.PostConstruct;
 import java.io.Serializable;
 
+/**
+ * Reactive long-polling bot. Incoming updates are grouped per chat and folded into an
+ * evolving {@link CommandContext}; the matched command's results are executed against the
+ * Telegram API through a {@link TelegramClient}.
+ */
 @Slf4j
 public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer {
 

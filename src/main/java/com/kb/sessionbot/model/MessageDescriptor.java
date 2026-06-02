@@ -15,6 +15,10 @@ import java.util.stream.Collectors;
 
 import static com.kb.sessionbot.commands.CommandConstants.*;
 
+/**
+ * Parses the callback/command wire format ({@code /command?answer1&answer2#param:value})
+ * into its command, answers, and dynamic parameters.
+ */
 @Slf4j
 @Getter
 @NoArgsConstructor(access = AccessLevel.PRIVATE)

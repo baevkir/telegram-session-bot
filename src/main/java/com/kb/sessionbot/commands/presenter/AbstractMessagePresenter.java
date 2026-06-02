@@ -13,6 +13,11 @@ import reactor.core.publisher.Flux;
 
 import java.util.List;
 
+/**
+ * Base helper for presenters that emit {@code SendMessage}/{@code EditMessageText}/
+ * {@code EditMessageReplyMarkup} with an optional inline keyboard. Subclasses supply the
+ * text and, optionally, the keyboard rows.
+ */
 public abstract class AbstractMessagePresenter<S> implements  BotMethodPresenter<S> {
     @Override
     public Publisher<BotApiMethod<?>> buildMessage(S source, CommandContext context) {

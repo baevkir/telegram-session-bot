@@ -15,6 +15,11 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 
+/**
+ * Adapts a {@code @BotCommand} bean to {@link IBotCommand}. Runs one dispatch step,
+ * suspending the context in {@code progress} when more input is needed, and on completion
+ * deletes the chat's question and answer messages to keep the conversation clean.
+ */
 @Slf4j
 public class DispatcherBotCommand implements IBotCommand {
 

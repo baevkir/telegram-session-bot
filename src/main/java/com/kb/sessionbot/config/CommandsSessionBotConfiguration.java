@@ -27,6 +27,13 @@ import reactor.core.publisher.Mono;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Auto-configuration for the session bot. Activates when {@code sessionbot.telegram.token}
+ * and {@code bot-username} are set, wiring the bot, its {@link TelegramClient} and
+ * long-polling registration, command dispatch, parameter renderers, auth and error
+ * handling. Most beans are {@code @ConditionalOnMissingBean} so a consuming app can override
+ * any of them by declaring its own.
+ */
 @AutoConfiguration
 @ConditionalOnProperty(value = {"token", "bot-username"}, prefix = "sessionbot.telegram")
 @EnableConfigurationProperties(CommandsSessionBotProperties.class)

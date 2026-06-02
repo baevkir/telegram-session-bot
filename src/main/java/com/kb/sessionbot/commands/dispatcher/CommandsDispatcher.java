@@ -25,6 +25,11 @@ import java.lang.reflect.Method;
 import java.util.*;
 
 
+/**
+ * Reflects over a {@code @BotCommand} bean's {@code @CommandMethod} methods, scores them
+ * against the context's accumulated answers, binds each parameter, and either invokes the
+ * best match or renders a prompt for the next missing argument.
+ */
 @Slf4j
 public class CommandsDispatcher {
     private final Object command;

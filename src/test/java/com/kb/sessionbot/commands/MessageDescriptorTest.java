@@ -1,109 +1,129 @@
 package com.kb.sessionbot.commands;
 
-
 import com.kb.sessionbot.model.MessageDescriptor;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 
-import static com.kb.sessionbot.commands.CommandConstants.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-
 class MessageDescriptorTest {
 
-    private static final String ARGUMENTS_START = "?";
-    private static final String TEST_COMMAND = "testcommand";
-    private static final String TEST_RENDERING_PARAMS_KEY = "testParam";
-    private static final String TEST_RENDERING_PARAMS_VALUE = "testValue";
-    private static final String TEST_RENDERING_PARAMS = TEST_RENDERING_PARAMS_KEY + KEY_VALUE_SEPARATOR + TEST_RENDERING_PARAMS_VALUE;
-    private static final String TEST_ARGUMENT1 = "testArg1";
-    private static final String TEST_ARGUMENT2 = "testArg2";
-    private static final String TEST_ARGUMENTS = TEST_ARGUMENT1 + PARAMETER_SEPARATOR + TEST_ARGUMENT2;
-    @Test
-    void parseCommandNotCommand() {
-        assertThat(MessageDescriptor.parse(TEST_COMMAND).isCommand()).isFalse();
+    @Nested
+    @DisplayName("command detection")
+    class CommandDetection {
+
+        @ParameterizedTest(name = "[{index}] \"{0}\" -> command={1}")
+        @CsvSource({
+            "/order,             true,  order",
+            "/order?buy&book,    true,  order",
+            "/order#k:v,         true,  order",
+            "/order?buy#k:v,     true,  order",
+            "order,              false, ",
+            "buy&book,           false, ",
+            "#k:v,               false, "
+        })
+        void parsesCommandFlagAndName(String text, boolean isCommand, String expectedCommand) {
+            var descriptor = MessageDescriptor.parse(text);
+            assertThat(descriptor.isCommand()).isEqualTo(isCommand);
+            assertThat(descriptor.getCommand()).isEqualTo(expectedCommand);
+        }
     }
 
-    @Test
-    void parseCommandOnlyCommand() {
-        var command = COMMAND_START + TEST_COMMAND;
-        var messageDescriptor = MessageDescriptor.parse(command);
-        assertThat(messageDescriptor.isCommand()).isTrue();
-        assertThat(messageDescriptor.getCommand()).isEqualTo(TEST_COMMAND);
-        assertThat( MessageDescriptor.parse(command).getCommand()).isEqualTo(TEST_COMMAND);
+    @Nested
+    @DisplayName("answers parsing")
+    class Answers {
+
+        @ParameterizedTest(name = "[{index}] \"{0}\"")
+        @CsvSource({
+            "/order,            0",
+            "/order?,           0",
+            "/order?buy,        1",
+            "/order?buy&book,   2",
+            "/order#k:v,        0",
+            "buy&book,          2",
+            "#k:v,              0"
+        })
+        void answerCount(String text, int expectedCount) {
+            assertThat(MessageDescriptor.parse(text).getAnswers()).hasSize(expectedCount);
+        }
+
+        @Test
+        void commandWithAnswersAndParams() {
+            var descriptor = MessageDescriptor.parse("/order?buy&book#k:v");
+            assertThat(descriptor.getAnswers()).containsExactly("buy", "book");
+        }
+
+        @Test
+        void answersOnlyWithoutLeadingSlash() {
+            var descriptor = MessageDescriptor.parse("buy&book");
+            assertThat(descriptor.isCommand()).isFalse();
+            assertThat(descriptor.getAnswers()).containsExactly("buy", "book");
+        }
+
+        @Test
+        void trailingArgumentSeparatorYieldsNoAnswers() {
+            // "/order?".split("\\?") -> ["/order"], length 1 -> empty answers.
+            assertThat(MessageDescriptor.parse("/order?").getAnswers()).isEmpty();
+        }
     }
 
-    @Test
-    void parseCommandWithoutArgumentsWithRenderingParams() {
-        var command = COMMAND_START + TEST_COMMAND + DYNAMIC_PARAMETERS_SEPARATOR + TEST_RENDERING_PARAMS;
-        var messageDescriptor = MessageDescriptor.parse(command);
-        assertThat(messageDescriptor.isCommand()).isTrue();
-        assertThat(messageDescriptor.getCommand()).isEqualTo(TEST_COMMAND);
+    @Nested
+    @DisplayName("dynamic params parsing")
+    class DynamicParams {
+
+        @Test
+        void noParamsYieldsEmptyMap() {
+            assertThat(MessageDescriptor.parse("/order?buy").getDynamicParams().getParams()).isEmpty();
+        }
+
+        @Test
+        void singleParamWithValue() {
+            assertThat(MessageDescriptor.parse("/order#k:v").getDynamicParams().getParams())
+                .containsExactlyEntriesOf(java.util.Map.of("k", "v"));
+        }
+
+        @Test
+        void paramWithoutValueBecomesEmptyString() {
+            assertThat(MessageDescriptor.parse("/order#refreshContext").getDynamicParams().getParams())
+                .containsEntry("refreshContext", "");
+        }
+
+        @Test
+        void multipleDynamicParams() {
+            assertThat(MessageDescriptor.parse("/order#a:1&b:2&flag").getDynamicParams().getParams())
+                .containsEntry("a", "1")
+                .containsEntry("b", "2")
+                .containsEntry("flag", "")
+                .hasSize(3);
+        }
+
+        @Test
+        void paramsOnlyWithoutCommandOrAnswers() {
+            var descriptor = MessageDescriptor.parse("#k:v");
+            assertThat(descriptor.isCommand()).isFalse();
+            assertThat(descriptor.getCommand()).isNull();
+            assertThat(descriptor.getAnswers()).isEmpty();
+            assertThat(descriptor.getDynamicParams().getParams()).containsEntry("k", "v");
+        }
     }
 
-    @Test
-    void parseCommandWithArgumentsWithRenderingParams() {
-        var command = COMMAND_START + TEST_COMMAND + ARGUMENTS_START + TEST_ARGUMENTS + DYNAMIC_PARAMETERS_SEPARATOR + TEST_RENDERING_PARAMS;
-        var messageDescriptor = MessageDescriptor.parse(command);
-        assertThat(messageDescriptor.isCommand()).isTrue();
-        assertThat(messageDescriptor.getCommand()).isEqualTo(TEST_COMMAND);
-    }
-    @Test
-    void parseAnswersEmptyArgs() {
-        var command = COMMAND_START + TEST_COMMAND + DYNAMIC_PARAMETERS_SEPARATOR + TEST_RENDERING_PARAMS;
-        var messageDescriptor = MessageDescriptor.parse(command);
-        assertThat(messageDescriptor.isCommand()).isTrue();
-        assertThat(messageDescriptor.getCommand()).isEqualTo(TEST_COMMAND);
-    }
+    @Nested
+    @DisplayName("guard cases")
+    class Guards {
 
-    @Test
-    void parseAnswersWithArgumentsWithRenderingParams() {
-        var command = COMMAND_START + TEST_COMMAND + ARGUMENTS_START + TEST_ARGUMENTS + DYNAMIC_PARAMETERS_SEPARATOR + TEST_RENDERING_PARAMS;
-        var messageDescriptor = MessageDescriptor.parse(command);
-        assertThat(messageDescriptor.isCommand()).isTrue();
-        assertThat(messageDescriptor.getCommand()).isEqualTo(TEST_COMMAND);
-        assertThat(messageDescriptor.getAnswers()).hasSize(2).contains(TEST_ARGUMENT1, TEST_ARGUMENT2);
-        assertThat(messageDescriptor.getDynamicParams().getParams()).hasSize(1).containsEntry(TEST_RENDERING_PARAMS_KEY, TEST_RENDERING_PARAMS_VALUE);
-    }
-
-    @Test
-    void parseRenderingParamsEmptyRenderingParams() {
-        var command = COMMAND_START + TEST_COMMAND + ARGUMENTS_START + TEST_ARGUMENTS;
-        var messageDescriptor = MessageDescriptor.parse(command);
-        assertThat(messageDescriptor.isCommand()).isTrue();
-        assertThat(messageDescriptor.getCommand()).isEqualTo(TEST_COMMAND);
-        assertThat(messageDescriptor.getAnswers()).hasSize(2).contains(TEST_ARGUMENT1, TEST_ARGUMENT2);
-        assertThat(messageDescriptor.getDynamicParams().getParams()).isEmpty();
-    }
-
-    @Test
-    void parseRenderingParamsWithArgumentsWithRenderingParams() {
-        var command = COMMAND_START + TEST_COMMAND + ARGUMENTS_START + TEST_ARGUMENTS + DYNAMIC_PARAMETERS_SEPARATOR + TEST_RENDERING_PARAMS;
-        var messageDescriptor = MessageDescriptor.parse(command);
-        assertThat(messageDescriptor.isCommand()).isTrue();
-        assertThat(messageDescriptor.getCommand()).isEqualTo(TEST_COMMAND);
-        assertThat(messageDescriptor.getAnswers()).isNotEmpty();
-        assertThat(messageDescriptor.getDynamicParams().getParams()).hasSize(1).containsEntry(TEST_RENDERING_PARAMS_KEY, TEST_RENDERING_PARAMS_VALUE);
-    }
-
-    @Test
-    void parseRenderingParamsEmptyArgumentsWithRenderingParams() {
-        var command = COMMAND_START + TEST_COMMAND + DYNAMIC_PARAMETERS_SEPARATOR + TEST_RENDERING_PARAMS;
-        var messageDescriptor = MessageDescriptor.parse(command);
-        assertThat(messageDescriptor.isCommand()).isTrue();
-        assertThat(messageDescriptor.getCommand()).isEqualTo(TEST_COMMAND);
-        assertThat(messageDescriptor.getAnswers()).isEmpty();
-        assertThat(messageDescriptor.getDynamicParams().getParams()).hasSize(1).containsEntry(TEST_RENDERING_PARAMS_KEY, TEST_RENDERING_PARAMS_VALUE);
-
-    }
-
-    @Test
-    void parseRenderingParamsOnlyRenderingParams() {
-        var command = DYNAMIC_PARAMETERS_SEPARATOR + TEST_RENDERING_PARAMS;
-        var messageDescriptor = MessageDescriptor.parse(command);
-        assertThat(messageDescriptor.isCommand()).isFalse();
-        assertThat(messageDescriptor.getCommand()).isNull();
-        assertThat(messageDescriptor.getAnswers()).isEmpty();
-        assertThat(messageDescriptor.getDynamicParams().getParams()).hasSize(1).containsEntry(TEST_RENDERING_PARAMS_KEY, TEST_RENDERING_PARAMS_VALUE);
+        @ParameterizedTest
+        @NullAndEmptySource
+        @ValueSource(strings = {" ", "   "})
+        void blankInputThrows(String text) {
+            assertThatThrownBy(() -> MessageDescriptor.parse(text))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("text is empty");
+        }
     }
 }

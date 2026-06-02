@@ -116,6 +116,12 @@ public class CommandsDispatcher {
                     args.add(context.getDynamicParams());
                 } else if (CommandContext.class.equals(parameter.getParameterType())) {
                     args.add(context);
+                } else {
+                    throw new BotCommandException(context, new IllegalArgumentException(String.format(
+                        "Cannot resolve parameter '%s' of type %s in command '%s'. "
+                            + "Annotate it with @Parameter or use a supported auto-injection type "
+                            + "(UpdateWrapper command/update, Update update, User from, String chatId, DynamicParameters, CommandContext).",
+                        parameter.getName(), parameter.getParameterType().getName(), commandId)));
                 }
 
             }

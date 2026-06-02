@@ -207,4 +207,20 @@ class CommandsDispatcherTest {
                 .verifyComplete();
         }
     }
+
+    @Nested
+    @DisplayName("unsupported auto-injection parameter")
+    class UnsupportedInjection {
+
+        @Test
+        void unmatchedParameterYieldsClearBotCommandException() {
+            var dispatcher = new CommandsDispatcher(new com.kb.sessionbot.fixtures.BadInjectionCommand(), context);
+            var result = dispatcher.invoke(ctx("/badinject?go"));
+            assertThat(result.hasErrors()).isTrue();
+            assertThat(result.getInvocationError())
+                .isInstanceOf(com.kb.sessionbot.errors.exception.BotCommandException.class);
+            assertThat(result.getInvocationError().getCause())
+                .hasMessageContaining("when");
+        }
+    }
 }

@@ -210,4 +210,19 @@ class TelegramUpdateHandlerTest {
 
         verify(telegramClient, timeout(2000)).execute(any(BotApiMethod.class));
     }
+
+    @DisplayName("stream completes after a command closes; a following command is not processed by the same stream")
+    @Test
+    void completesAfterCommandClose() {
+        var handler = handler(ALLOW);
+        var updates = Flux.just(
+            Fixtures.wrap(Fixtures.messageUpdate(1, Fixtures.CHAT_ID, 100, "/order?buy&book")),
+            Fixtures.wrap(Fixtures.messageUpdate(2, Fixtures.CHAT_ID, 101, "/order?buy&pen")));
+
+        StepVerifier.create(handler.handleUpdates(updates)
+                .filter(m -> m instanceof SendMessage)
+                .map(m -> ((SendMessage) m).getText()))
+            .expectNext("buy:book")   // first command's close result
+            .verifyComplete();        // stream completed after the close -> "buy:pen" not processed here
+    }
 }

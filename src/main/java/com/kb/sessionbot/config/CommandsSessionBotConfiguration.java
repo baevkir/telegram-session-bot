@@ -139,20 +139,20 @@ public class CommandsSessionBotConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(name = "textParameterRenderer")
-    public ParameterRenderer textParameterRenderer() {
-        return new TextParameterRenderer();
+    public ParameterRenderer textParameterRenderer(BotLabels botLabels) {
+        return new TextParameterRenderer(botLabels);
     }
 
     @Bean
     @ConditionalOnMissingBean(name = "booleanParameterRenderer")
-    public ParameterRenderer booleanParameterRenderer() {
-        return new BooleanParameterRenderer();
+    public ParameterRenderer booleanParameterRenderer(BotLabels botLabels) {
+        return new BooleanParameterRenderer(botLabels);
     }
 
     @Bean
     @ConditionalOnMissingBean(name = "dateParameterRenderer")
-    public ParameterRenderer dateParameterRenderer() {
-        return new DateParameterRenderer();
+    public ParameterRenderer dateParameterRenderer(BotLabels botLabels) {
+        return new DateParameterRenderer(botLabels);
     }
 
     @Bean

@@ -1,6 +1,7 @@
 package com.kb.sessionbot.commands.dispatcher.parameters;
 
 import com.kb.sessionbot.commands.CommandBuilder;
+import com.kb.sessionbot.i18n.BotLabels;
 import org.reactivestreams.Publisher;
 import org.telegram.telegrambots.meta.api.methods.ParseMode;
 import org.telegram.telegrambots.meta.api.methods.botapimethods.PartialBotApiMethod;
@@ -18,6 +19,12 @@ import static org.apache.commons.lang3.ObjectUtils.isEmpty;
 import static org.apache.commons.lang3.ObjectUtils.isNotEmpty;
 
 public class TextParameterRenderer implements ParameterRenderer {
+    private final BotLabels labels;
+
+    public TextParameterRenderer(BotLabels labels) {
+        this.labels = labels;
+    }
+
     @Override
     public Publisher<? extends PartialBotApiMethod<?>> render(ParameterRequest parameterRequest) {
         return Mono.fromSupplier(() -> {
@@ -31,7 +38,7 @@ public class TextParameterRenderer implements ParameterRenderer {
                 InlineKeyboardRow rowInline = parameterRequest.getOptions().stream()
                     .map(option ->
                         InlineKeyboardButton.builder()
-                            .text(option.getValue())
+                            .text(labels.resolve(option.getValue(), parameterRequest.getContext()))
                             .callbackData(option.getKey())
                             .build()
                     )
@@ -42,7 +49,7 @@ public class TextParameterRenderer implements ParameterRenderer {
             if (!parameterRequest.isRequired()) {
                 rowsInline.add(
                     new InlineKeyboardRow(InlineKeyboardButton.builder()
-                        .text("Пропусить")
+                        .text(labels.skip(parameterRequest.getContext()))
                         .callbackData(CommandBuilder.create().scipAnswer(parameterRequest.getIndex()).build())
                         .build())
                 );

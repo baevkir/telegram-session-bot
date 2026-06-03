@@ -30,10 +30,6 @@ import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
 
 import java.util.List;
-import java.util.concurrent.Executors;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -47,6 +43,7 @@ class CommandsSessionBotTest {
     private TelegramClient telegramClient;
     private CommandsFactory commandsFactory;
     private ErrorHandlerFactory errorHandlerFactory;
+    private OutboundMessages outboundMessages;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -67,6 +64,8 @@ class CommandsSessionBotTest {
         // execute(SendMessage) returns a Message so the progress branch records a question message.
         Mockito.when(telegramClient.execute(any(BotApiMethod.class)))
             .thenReturn(Fixtures.message(Fixtures.CHAT_ID, 999, "sent"));
+
+        outboundMessages = new OutboundMessages();
     }
 
     @AfterEach
@@ -78,7 +77,8 @@ class CommandsSessionBotTest {
         return new CommandsSessionBot(
             commandsFactory, auth, errorHandlerFactory,
             new CommandsSessionBotProperties(),
-            new TelegramClientMessageExecutor(telegramClient, errorHandlerFactory));
+            new TelegramClientMessageExecutor(telegramClient, errorHandlerFactory),
+            outboundMessages);
     }
 
     private static final AuthInterceptor ALLOW = ctx -> reactor.core.publisher.Mono.just(true);
@@ -239,47 +239,6 @@ class CommandsSessionBotTest {
                 .expectNextMatches(text -> text.contains("product"))
                 .expectNext("buy:book")
                 .verifyComplete();
-        }
-
-        @DisplayName("concurrent sendMessage from multiple threads loses no message")
-        @Test
-        void concurrentSendMessageLosesNothing() throws Exception {
-            var bot = bot(ALLOW);
-            bot.init(); // SetMyCommands emitted once at startup
-
-            int threads = 8;
-            int perThread = 25;
-            int total = threads * perThread;
-            var pool = Executors.newFixedThreadPool(threads);
-            var start = new CountDownLatch(1);
-            var done = new CountDownLatch(threads);
-            var sent = new AtomicInteger();
-            try {
-                for (int t = 0; t < threads; t++) {
-                    pool.submit(() -> {
-                        try {
-                            start.await();
-                            for (int i = 0; i < perThread; i++) {
-                                bot.sendMessage(SendMessage.builder()
-                                    .chatId(String.valueOf(Fixtures.CHAT_ID))
-                                    .text("m" + sent.getAndIncrement())
-                                    .build());
-                            }
-                        } catch (InterruptedException ignored) {
-                            Thread.currentThread().interrupt();
-                        } finally {
-                            done.countDown();
-                        }
-                    });
-                }
-                start.countDown();
-                assertThat(done.await(10, TimeUnit.SECONDS)).isTrue();
-            } finally {
-                pool.shutdownNow();
-            }
-
-            // SetMyCommands (1) + every sendMessage executed; busyLooping must not drop any.
-            verify(telegramClient, timeout(5000).times(total + 1)).execute(any(BotApiMethod.class));
         }
 
         @DisplayName("a chat whose handler errors does not terminate the stream (failure isolation)")

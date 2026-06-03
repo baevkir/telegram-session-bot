@@ -24,12 +24,11 @@ import reactor.core.scheduler.Schedulers;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.io.Serializable;
-import java.time.Duration;
 
 /**
  * Reactive long-polling bot. Incoming updates are grouped per chat and folded into an
  * evolving {@link CommandContext}; the matched command's results are executed against the
- * Telegram API through a {@link TelegramClient}.
+ * Telegram API through a {@link MessageExecutor}.
  */
 @Slf4j
 public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer {
@@ -39,8 +38,8 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
     private final AuthInterceptor authInterceptor;
     private final CommandsSessionBotProperties properties;
     private final MessageExecutor messageExecutor;
+    private final OutboundMessages outboundMessages;
     private final Sinks.Many<Update> updatesSink = Sinks.many().unicast().onBackpressureBuffer();
-    private final Sinks.Many<PartialBotApiMethod<?>> messagesSink = Sinks.many().unicast().onBackpressureBuffer();
     private Disposable subscription;
 
     public CommandsSessionBot(
@@ -48,17 +47,15 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
         AuthInterceptor authInterceptor,
         ErrorHandlerFactory errorHandler,
         CommandsSessionBotProperties properties,
-        MessageExecutor messageExecutor
+        MessageExecutor messageExecutor,
+        OutboundMessages outboundMessages
     ) {
         this.commandsFactory = commandsFactory;
         this.errorHandler = errorHandler;
         this.authInterceptor = authInterceptor;
         this.properties = properties;
         this.messageExecutor = messageExecutor;
-    }
-
-    public void sendMessage(PartialBotApiMethod<?> message) {
-        messagesSink.emitNext(message, Sinks.EmitFailureHandler.busyLooping(Duration.ofSeconds(1)));
+        this.outboundMessages = outboundMessages;
     }
 
     @Override
@@ -85,7 +82,7 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
                             log.warn("Handling pipeline error in a chat group", error);
                             return errorHandler.handle(error).doOnNext(this::executeMessage);
                         }))
-                    .mergeWith(messagesSink.asFlux().publishOn(Schedulers.boundedElastic()).doOnNext(this::executeMessage))
+                    .mergeWith(outboundMessages.messages().publishOn(Schedulers.boundedElastic()).doOnNext(this::executeMessage))
             ).subscribe(
                 message -> { },
                 error -> log.error("Bot pipeline terminated unexpectedly", error)

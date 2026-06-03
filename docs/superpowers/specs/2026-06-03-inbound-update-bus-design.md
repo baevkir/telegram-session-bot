@@ -2,7 +2,9 @@
 
 > A pluggable inbound transport SPI for `CommandsSessionBot` whose default groups updates per chat
 > with `groupBy` + an idle `timeout`, replacing the in-coordinator `groupBy(chatId)` and fixing its
-> unbounded-group / 256-slot footguns. No change to `TelegramUpdateHandler`.
+> unbounded-group / 256-slot footguns. `TelegramUpdateHandler` additionally completes a chat's
+> stream as soon as its command closes, so completed conversations release immediately — the key
+> memory-leak fix.
 
 ## Goal
 
@@ -13,17 +15,16 @@ only Reactor operators we already trust:
 1. **Pluggability** — inbound transport becomes an interface (`@ConditionalOnMissingBean`), so a
    consuming app can replace it (webhook source, queue-backed source, custom partitioning) without
    touching the coordinator. Mirrors the existing `OutboundMessageBus`.
-2. **Bounded default** — `SinkInboundUpdateBus` groups updates per chat with `groupBy` and completes
-   each chat's stream after `chat-idle-ttl` of inactivity via `timeout(idleTtl, empty)`. Completed
-   groups are dropped by `groupBy`, freeing memory and the coordinator's `flatMap` slots. A
-   configurable `maxConcurrentChats` lifts `flatMap`'s implicit 256 ceiling.
+2. **Bounded default** — `SinkInboundUpdateBus` groups updates per chat with `groupBy`; a chat's
+   stream completes on **whichever comes first**:
+   - the command **closing** — `TelegramUpdateHandler` collects each context's results and completes
+     the stream once a command reaches `close` (eager release; the main memory-leak fix);
+   - the chat going **idle** — `group.timeout(idleTtl, empty)` releases abandoned in-progress
+     conversations that never reach `close`.
+   Either way the group completes, so `groupBy` evicts it and the coordinator's `flatMap` slot frees.
+   A configurable `maxConcurrentChats` lifts `flatMap`'s implicit 256 ceiling.
 
-`TelegramUpdateHandler` is **unchanged** — the idle timeout alone bounds resources, so no
-per-command stream-completion logic is added (an earlier eager-completion idea was dropped: it fought
-the mutable-`CommandContext` design and produced unreadable pipelines for only a release-latency
-gain; tuning `chat-idle-ttl` down achieves the same effect via configuration).
-
-## Background — why the current `groupBy(chatId)` is changed
+## Background — why the current `groupBy(chatId)` leaks
 
 The coordinator currently does `updatesSink.asFlux().map(wrap).groupBy(chatId).flatMap(group ->
 handleUpdates(group.publishOn(...)).onErrorResume(...))`. The logic (per-chat ordering, error
@@ -38,11 +39,10 @@ fail at large scale:
    holds a slot forever; after 256 active chats the 257th stalls (a latent deadlock that passes
    testing).
 
-The fix makes idle groups **complete** (so `groupBy` evicts them and `flatMap` slots free) via a
-per-group `timeout`, and makes the fan-out concurrency configurable. We deliberately do **not**
-hand-roll a keyed cache to replace `groupBy` — that would reimplement `groupBy`'s core with new,
-untested concurrency code for the sole gain of closing a rare teardown drop-race; that trade is not
-worth it for the default (see "Accepted limitations").
+The fix makes a chat's inner stream **complete** (so `groupBy` evicts the group and the `flatMap`
+slot frees) — eagerly when a command closes, and as a safety net when a chat goes idle — and makes
+the fan-out concurrency configurable. We deliberately do **not** hand-roll a keyed cache to replace
+`groupBy` (that would reimplement `groupBy`'s core with new, untested concurrency code).
 
 ## Architecture
 
@@ -73,9 +73,9 @@ worth it for the default (see "Accepted limitations").
                            .map(g -> ChatUpdateStream(g.key(), g.timeout(idleTtl, empty)))
 ```
 
-The bus owns receiving (`emit`), wrapping (`UpdateWrapper::wrap`), per-chat grouping (`groupBy`) and
-the idle release (`timeout`). The coordinator owns fan-out + per-chat error isolation. The handler is
-untouched.
+The bus owns receiving (`emit`), wrapping, per-chat grouping (`groupBy`) and the idle safety-net
+(`timeout`). The coordinator owns fan-out + per-chat error isolation. The handler dispatches each
+context and **completes the per-chat stream once a command closes**.
 
 ## Components
 
@@ -92,8 +92,7 @@ public record ChatUpdateStream(String chatId, Flux<UpdateWrapper> updates) {}
 ```
 
 Rationale: mirrors Reactor's `GroupedFlux.key()`. Key-upfront lets the coordinator's `onErrorResume`
-log the real `chatId` and lets custom dispatchers route by key, and it self-documents the API.
-Composition (a record), not extending `Flux`.
+log the real `chatId` and lets custom dispatchers route by key, and self-documents the API.
 
 ### `InboundUpdateBus` (interface, new — the SPI)
 
@@ -104,9 +103,8 @@ import org.telegram.telegrambots.meta.api.objects.Update;
 import reactor.core.publisher.Flux;
 
 /**
- * Inbound transport + per-chat partitioning. {@code emit} is called once per received update (by
- * the coordinator's {@code consume}); {@code updates()} emits one {@link ChatUpdateStream} per
- * active chat, each carrying that chat's updates in arrival order.
+ * Inbound transport + per-chat partitioning. {@code emit} is called once per received update;
+ * {@code updates()} emits one {@link ChatUpdateStream} per active chat, in arrival order.
  *
  * <p>Contract: implementations MUST preserve per-chat arrival order within a stream, and SHOULD
  * complete a chat's stream when it goes idle so downstream fan-out slots are freed.
@@ -145,11 +143,47 @@ public class SinkInboundUpdateBus implements InboundUpdateBus {
 ```
 
 - `emit` uses `FAIL_FAST`: `consume` is called by the single `LongPollingSingleThreadUpdateConsumer`
-  thread, so there is no serialization contention (matches the current code).
-- `group.timeout(idleTtl, Flux.empty())`: a per-item **sliding** idle timeout (resets on each
-  update). When a chat is silent for `idleTtl`, the group switches to the empty fallback and
-  **completes** → `groupBy` cancels and evicts the group → memory freed and the `flatMap` slot frees.
-  The next update for that chat creates a fresh group.
+  thread, so there is no serialization contention.
+- `group.timeout(idleTtl, Flux.empty())`: a per-item sliding idle timeout — the **safety net** for a
+  chat that starts a multi-step command then never finishes. (Completed commands are released earlier
+  by the handler; see below.)
+
+### `TelegramUpdateHandler` (modified — complete on close)
+
+The handler folds updates into a `CommandContext`, dispatches each, and **completes the stream once a
+command closes**. Because `CommandContext` is mutable and `close()` is set *inside* dispatch, the
+completion decision is made at context granularity, *after* dispatch — each context's results are
+collected, then a `takeUntil` on the post-dispatch state completes the stream after the close
+context's full output (cleanup `DeleteMessage`s included):
+
+```java
+public Flux<PartialBotApiMethod<?>> handleUpdates(Flux<UpdateWrapper> updates) {
+    Assert.notNull(updates, "Updates is null.");
+    return updates
+        .scanWith(CommandContext::empty, this::fold)
+        .skip(1) // drop the empty seed context emitted before any update
+        .concatMap(context -> dispatch(context).collectList()
+            .map(results -> new DispatchOutcome(context, results)))
+        .takeUntil(outcome -> ContextState.close.equals(outcome.context().getState()))
+        .concatMapIterable(DispatchOutcome::results);
+}
+```
+
+`fold` (the scan accumulator) and `dispatch` (help / command / auth-error, with the inline
+`messageExecutor::execute` + `addQuestionMessage` side effects) are extracted private methods; their
+bodies are unchanged from the current handler. `DispatchOutcome` is a private record
+`(CommandContext context, List<PartialBotApiMethod<?>> results)`.
+
+Correctness notes:
+- `collectList` runs dispatch to completion first, so `outcome.context().getState()` is the *final*
+  state; `takeUntil` decides once per context, never mid-results — cleanup `DeleteMessage`s are never
+  cut off.
+- Inline execution and `addQuestionMessage` are unchanged: `dispatch`'s `doOnNext` still executes and
+  records as results are produced (during collection), in order.
+- Auth-rejected dispatch errors with `BotAuthException`; `collectList` propagates it, so the
+  coordinator's `onErrorResume` handles it exactly as today.
+- After a close, the stream completes → the group is cancelled → `groupBy` evicts it → the next
+  command for that chat starts a fresh group.
 
 ### `CommandsSessionBot` (coordinator, modified)
 
@@ -167,25 +201,21 @@ public class SinkInboundUpdateBus implements InboundUpdateBus {
                   return errorHandler.handle(error).doOnNext(messageExecutor::execute);
               }),
               maxConcurrentChats)
-          .subscribe(
-              ignored -> { },
-              error -> log.error("Bot pipeline terminated unexpectedly", error)));
+          .subscribe(ignored -> { }, error -> log.error("Bot pipeline terminated unexpectedly", error)));
   ```
-- The SetMyCommands and outbound subscriptions are unchanged.
+- SetMyCommands and outbound subscriptions unchanged.
 
 ## Configuration
-
-New properties on `CommandsSessionBotProperties` (Spring Boot binds `Duration` and `int` natively):
 
 | Property | Type | Default | Used by |
 |---|---|---|---|
 | `sessionbot.telegram.chat-idle-ttl` | `Duration` | `30m` | bus → `groupBy` per-group `timeout` |
 | `sessionbot.telegram.max-concurrent-chats` | `int` | `256` | coordinator → `flatMap` concurrency |
 
-- `chat-idle-ttl = 30m` — releases a chat's group after it is idle this long. Lower it (e.g. `2m`)
-  for snappier release; raise it to keep long-paused conversations resident.
-- `max-concurrent-chats = 256` — matches `flatMap`'s current implicit default; raise it if more than
-  256 chats are expected active simultaneously.
+- `chat-idle-ttl = 30m` — now only the safety net for *abandoned in-progress* conversations
+  (completed commands are released eagerly), so a generous value is fine; keep it comfortably longer
+  than expected inter-step pauses.
+- `max-concurrent-chats = 256` — matches `flatMap`'s implicit default; raise for higher concurrency.
 
 ## Wiring (auto-configuration)
 
@@ -198,85 +228,67 @@ public InboundUpdateBus inboundUpdateBus(CommandsSessionBotProperties properties
 
 @Bean
 public CommandsSessionBot bot(
-        CommandsFactory commandsFactory,
-        ErrorHandlerFactory errorHandler,
-        MessageExecutor messageExecutor,
-        OutboundMessageBus outboundMessageBus,
-        TelegramUpdateHandler telegramUpdateHandler,
-        InboundUpdateBus inboundUpdateBus,
-        CommandsSessionBotProperties properties) {
+        CommandsFactory commandsFactory, ErrorHandlerFactory errorHandler, MessageExecutor messageExecutor,
+        OutboundMessageBus outboundMessageBus, TelegramUpdateHandler telegramUpdateHandler,
+        InboundUpdateBus inboundUpdateBus, CommandsSessionBotProperties properties) {
     return new CommandsSessionBot(commandsFactory, errorHandler, messageExecutor,
         outboundMessageBus, telegramUpdateHandler, inboundUpdateBus, properties.getMaxConcurrentChats());
 }
 ```
 
-Only the `int` concurrency is passed to the coordinator (not the whole properties object), keeping
-the coordinator's dependency surface minimal per the decomposition design.
-
 ## No new dependency
 
-This design uses only Reactor operators already on the classpath (`groupBy`, `timeout`, `flatMap`).
-No Caffeine or other third-party cache is added.
-
-## Data flow
-
-1. Poll thread → `consume(update)` → `bus.emit(update)` (single-producer `FAIL_FAST`).
-2. `bus.updates()`: `wrap` → `groupBy(chatId)` → each group wrapped as a `ChatUpdateStream` whose flux
-   carries `timeout(idleTtl, empty)`.
-3. Coordinator `flatMap`s (bounded by `maxConcurrentChats`) each `ChatUpdateStream` into
-   `handler.handleUpdates(stream.updates().publishOn(boundedElastic))`, executing results and
-   isolating errors per chat.
-4. After `idleTtl` with no updates, a chat's group times out → completes → `groupBy` evicts it →
-   `flatMap` slot frees. The next update for that chat creates a fresh group.
+Only Reactor operators already on the classpath (`groupBy`, `timeout`, `flatMap`, `concatMap`,
+`collectList`, `takeUntil`, `concatMapIterable`). No Caffeine or other third-party cache.
 
 ## Lifecycle & error handling
 
+- **Two release triggers:** the handler's `takeUntil(close)` (eager, for completed commands) and the
+  bus's `timeout(idleTtl)` (safety net, for abandoned in-progress commands). A stream completes on
+  whichever fires first; either way `groupBy` evicts the group.
 - **Per-chat error isolation:** `onErrorResume` wraps each inner stream and logs the real `chatId`;
-  one chat's failure never affects the outer subscription. (An error terminates that chat's stream,
-  which lets `groupBy` evict and recreate on the next update.)
-- **Release:** the single trigger is the idle `timeout(idleTtl)` in the bus. No completion logic in
-  the handler.
+  one chat's failure never affects the outer subscription. An error also terminates that chat's
+  stream, letting `groupBy` evict and recreate on the next update.
 
-## Accepted limitations (documented behavior)
+## Accepted limitations (documented)
 
 - **Teardown drop-race (accepted).** `groupBy` cannot atomically "complete a group and route the next
-  same-key element to a new group." An update arriving in the brief teardown window after an idle
-  group completes can be dropped (`onNextDropped`) rather than re-grouped. Because idle eviction fires
-  only after `idleTtl` of silence — i.e. exactly when no update is imminent — the window almost never
-  has a contender. A guaranteed drop-free dispatcher would require controlling routing ourselves (a
-  keyed-cache reimplementation of `groupBy`), which is deliberately out of scope; an app that needs it
-  can override `InboundUpdateBus`.
-- **Eviction mid-conversation discards `CommandContext`.** A chat that starts a multi-step command and
-  then goes idle past `idleTtl` loses its in-progress context; the user re-issues the command. Pending
-  `questionMessages` cleanup for such a conversation is not auto-deleted. `chat-idle-ttl` is the safety
-  margin (keep it comfortably longer than expected inter-step pauses).
+  same-key element to a new group." An update arriving in the brief teardown window after a group
+  completes can be dropped (`onNextDropped`). With eager completion this window occurs right after
+  each command, but human reaction time (hundreds of ms–seconds) far exceeds the teardown window
+  (sub-millisecond), so collisions are vanishingly rare. A guaranteed drop-free dispatcher would
+  require controlling routing ourselves (a keyed-cache reimplementation of `groupBy`), out of scope;
+  an app that needs it can override `InboundUpdateBus`.
+- **Idle eviction discards in-progress `CommandContext`.** A chat that abandons a multi-step command
+  mid-flight loses its context after `chat-idle-ttl`; the user re-issues. Pending `questionMessages`
+  cleanup for such a conversation is not auto-deleted.
 - **Inbound stays single-consumer** (one Telegram poller per token). This SPI decouples the *source*
   (enabling a future `WebhookInboundUpdateBus`) but does not by itself enable multi-instance
-  ingestion, which would also require externalizing `CommandContext`.
+  ingestion (which would also require externalizing `CommandContext`).
 
 ## Testing
 
-- **`SinkInboundUpdateBusTest`**:
-  - `emit` announces one `ChatUpdateStream` tagged with the chat id (StepVerifier on `updates()`).
-  - Distinct chats produce distinct streams in arrival order.
-  - A chat's stream completes after the idle TTL with no updates (StepVerifier `withVirtualTime`).
-  - A new update after idle completion recreates a fresh stream for the same chat (virtual time).
-- **`CommandsSessionBotTest`** (retargeted factory only): existing `consumeEndToEnd`, failure
+- **`TelegramUpdateHandlerTest`** — add `completesAfterCommandClose`: two back-to-back completing
+  commands; only the first is processed (the stream completes after its close). All existing fold
+  cases stay green.
+- **`SinkInboundUpdateBusTest`** — `emit` announces one `ChatUpdateStream`; distinct chats →
+  distinct streams in order; idle TTL completes a stream (`StepVerifier.withVirtualTime`); a new
+  update after idle completion recreates a fresh stream.
+- **`CommandsSessionBotTest`** — retarget the factory only; existing `consumeEndToEnd`, failure
   isolation, outbound, and shutdown cases continue to pass driving through the bus.
-- **`TelegramUpdateHandlerTest`** — unchanged (the handler is not modified).
 - Reuse existing fixtures (`Fixtures`, `OrderCommand`, `EchoCommand`, `FixtureCommandConfig`).
 
 ## File structure
 
 | File | Action |
 |------|--------|
+| `src/main/java/com/kb/sessionbot/TelegramUpdateHandler.java` | Modify (complete on close, via collectList) |
+| `src/test/java/com/kb/sessionbot/TelegramUpdateHandlerTest.java` | Modify (eager-completion test) |
 | `src/main/java/com/kb/sessionbot/ChatUpdateStream.java` | Create |
 | `src/main/java/com/kb/sessionbot/InboundUpdateBus.java` | Create |
 | `src/main/java/com/kb/sessionbot/SinkInboundUpdateBus.java` | Create |
+| `src/test/java/com/kb/sessionbot/SinkInboundUpdateBusTest.java` | Create |
 | `src/main/java/com/kb/sessionbot/config/CommandsSessionBotProperties.java` | Modify (2 properties) |
 | `src/main/java/com/kb/sessionbot/CommandsSessionBot.java` | Modify (consume + init + fields) |
 | `src/main/java/com/kb/sessionbot/config/CommandsSessionBotConfiguration.java` | Modify (bean + wiring) |
-| `src/test/java/com/kb/sessionbot/SinkInboundUpdateBusTest.java` | Create |
 | `src/test/java/com/kb/sessionbot/CommandsSessionBotTest.java` | Modify (retarget factory) |
-
-`TelegramUpdateHandler` is intentionally **not** in this list.

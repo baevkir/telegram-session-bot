@@ -145,7 +145,11 @@ public class BotLabels {
      * if no inline default was given, the original literal text). Anything not wholly brace-wrapped
      * is returned unchanged. Resolution never throws.
      */
-    public String resolve(String text, CommandContext ctx) {
+    public String resolve(String text, CommandContext ctx) { return resolve(text, userName(ctx)); }
+
+    /** Resolve by user name directly — for out-of-band (outbound) messages with no incoming context.
+     *  Pass {@code null} userName for the configured/bot-wide locale. */
+    public String resolve(String text, String userName) {
         if (text == null) return null;
         var trimmed = text.trim();
         if (trimmed.length() > 2 && trimmed.startsWith("{") && trimmed.endsWith("}")
@@ -154,7 +158,7 @@ public class BotLabels {
             int sep = inner.indexOf(':');                       // split on FIRST ':' -> code : default
             var code = (sep >= 0 ? inner.substring(0, sep) : inner).trim();
             var fallback = sep >= 0 ? inner.substring(sep + 1) : text;   // inline default, else literal
-            return messages.getMessage(code, null, fallback, localeProvider.getLocale(userName(ctx)));
+            return messages.getMessage(code, null, fallback, localeProvider.getLocale(userName));
         }
         return text;
     }
@@ -277,6 +281,10 @@ New `@Bean`s in `CommandsSessionBotConfiguration`, all `@ConditionalOnMissingBea
 - **Per-user language:** provide a `LocaleProvider` bean that maps `userName → Locale`.
 - **Full control:** provide a `sessionbotLabelsMessageSource` or `botLabels` bean (any `MessageSource`
   impl — DB-backed, remote, subclass).
+- **Outbound messages:** `BotLabels` is a public bean; when building an out-of-band message for
+  `OutboundMessageBus`, resolve label text with `botLabels.resolve("{key}", null)` (configured locale)
+  or `botLabels.resolve("{key}", userName)` (that recipient's language). No framework interception of
+  outbound bodies — the producer resolves explicitly, so the locale is unambiguous.
 
 ## Accepted decisions / limitations
 

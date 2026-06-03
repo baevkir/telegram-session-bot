@@ -1,6 +1,11 @@
 package com.kb.sessionbot.config;
 
 import com.kb.sessionbot.CommandsSessionBot;
+import com.kb.sessionbot.MessageExecutor;
+import com.kb.sessionbot.OutboundMessageBus;
+import com.kb.sessionbot.SinkOutboundMessageBus;
+import com.kb.sessionbot.TelegramClientMessageExecutor;
+import com.kb.sessionbot.TelegramUpdateHandler;
 import com.kb.sessionbot.auth.AuthInterceptor;
 import com.kb.sessionbot.commands.CommandsFactory;
 import com.kb.sessionbot.commands.HelpCommand;
@@ -55,13 +60,34 @@ public class CommandsSessionBotConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean
+    public MessageExecutor messageExecutor(TelegramClient telegramClient, ErrorHandlerFactory errorHandler) {
+        return new TelegramClientMessageExecutor(telegramClient, errorHandler);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public OutboundMessageBus outboundMessageBus() {
+        return new SinkOutboundMessageBus();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public TelegramUpdateHandler telegramUpdateHandler(
+            CommandsFactory commandsFactory,
+            AuthInterceptor authInterceptor,
+            MessageExecutor messageExecutor) {
+        return new TelegramUpdateHandler(commandsFactory, authInterceptor, messageExecutor);
+    }
+
+    @Bean
     public CommandsSessionBot bot(
             CommandsFactory commandsFactory,
             ErrorHandlerFactory errorHandler,
-            AuthInterceptor authInterceptor,
-            CommandsSessionBotProperties properties,
-            TelegramClient telegramClient) {
-        return new CommandsSessionBot(commandsFactory, authInterceptor, errorHandler, properties, telegramClient);
+            MessageExecutor messageExecutor,
+            OutboundMessageBus outboundMessageBus,
+            TelegramUpdateHandler telegramUpdateHandler) {
+        return new CommandsSessionBot(commandsFactory, errorHandler, messageExecutor, outboundMessageBus, telegramUpdateHandler);
     }
 
 

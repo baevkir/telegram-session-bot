@@ -299,6 +299,7 @@ import com.kb.sessionbot.commands.CommandsFactory;
 import com.kb.sessionbot.errors.handler.ErrorHandlerFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.telegram.telegrambots.longpolling.util.LongPollingSingleThreadUpdateConsumer;
+import org.telegram.telegrambots.meta.api.methods.botapimethods.PartialBotApiMethod;
 import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.commands.BotCommand;
@@ -365,12 +366,7 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
 
         subscriptions.add(
             inboundUpdateBus.updates()
-                .flatMap(stream -> updateHandler.handleUpdates(stream.updates().publishOn(Schedulers.boundedElastic()))
-                    .onErrorResume(error -> {
-                        log.warn("Handling pipeline error in chat {}", stream.chatId(), error);
-                        return errorHandler.handle(error).doOnNext(messageExecutor::execute);
-                    }),
-                    maxConcurrentChats)
+                .flatMap(this::handleChat, maxConcurrentChats)
                 .subscribe(
                     ignored -> { },
                     error -> log.error("Bot pipeline terminated unexpectedly", error)));
@@ -381,6 +377,14 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
                 .subscribe(
                     messageExecutor::execute,
                     error -> log.error("Bot pipeline terminated unexpectedly", error)));
+    }
+
+    private Flux<PartialBotApiMethod<?>> handleChat(ChatUpdateStream stream) {
+        return updateHandler.handleUpdates(stream.updates().publishOn(Schedulers.boundedElastic()))
+            .onErrorResume(error -> {
+                log.warn("Handling pipeline error in chat {}", stream.chatId(), error);
+                return errorHandler.handle(error).doOnNext(messageExecutor::execute);
+            });
     }
 
     @PreDestroy
@@ -394,7 +398,7 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
 
 (Removed vs current: the `Sinks.Many<Update> updatesSink` field, the `consume` `emitNext`, the
 `map(UpdateWrapper::wrap).groupBy(...)` in `init`, and the now-unused `UpdateWrapper` and `Sinks`
-imports.)
+imports. Added the `PartialBotApiMethod` import for `handleChat`'s return type.)
 
 - [ ] **Step 2: Update the auto-configuration** — in `CommandsSessionBotConfiguration.java`, add
   `import com.kb.sessionbot.InboundUpdateBus;` and `import com.kb.sessionbot.SinkInboundUpdateBus;`

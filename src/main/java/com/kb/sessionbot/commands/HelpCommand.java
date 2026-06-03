@@ -41,16 +41,21 @@ public class HelpCommand implements IBotCommand {
     }
 
     @Override
+    public String getDescription(CommandContext context) {
+        return labels.helpDescription(context);
+    }
+
+    @Override
     public Publisher<? extends PartialBotApiMethod<?>> process(CommandContext commandContext) {
         return Mono.fromSupplier(() -> {
             StringBuilder helpMessageBuilder = new StringBuilder("<b>").append(labels.helpTitle(commandContext)).append("</b>\n");
             helpMessageBuilder.append(labels.helpIntro(commandContext)).append("\n\n");
 
-            helpMessageBuilder.append(getCommandPresenter(this)).append("\n\n");
+            helpMessageBuilder.append(getCommandPresenter(this, commandContext)).append("\n\n");
 
             botCommands.stream()
                 .filter(Predicate.not(IBotCommand::hidden))
-                .forEach(botCommand -> helpMessageBuilder.append(getCommandPresenter(botCommand)).append("\n\n"));
+                .forEach(botCommand -> helpMessageBuilder.append(getCommandPresenter(botCommand, commandContext)).append("\n\n"));
 
             return SendMessage.builder()
                 .chatId(commandContext.getChatId())
@@ -60,8 +65,8 @@ public class HelpCommand implements IBotCommand {
         });
     }
 
-    private String getCommandPresenter(IBotCommand command) {
+    private String getCommandPresenter(IBotCommand command, CommandContext context) {
             return "<b>" + COMMAND_INIT_CHARACTER + command.getCommandIdentifier() +
-                    "</b>\n" + command.getDescription();
+                    "</b>\n" + command.getDescription(context);
     }
 }

@@ -26,7 +26,8 @@ public class BotLabels {
 
     public String helpTitle(CommandContext ctx)        { return get("help.title", ctx); }
     public String helpIntro(CommandContext ctx)        { return get("help.intro", ctx); }
-    public String helpDescription()                    { return get("help.description", null); }
+    public String helpDescription()                    { return helpDescription(null); }
+    public String helpDescription(CommandContext ctx)  { return get("help.description", ctx); }
     public String skip(CommandContext ctx)             { return get("button.skip", ctx); }
     public String yes(CommandContext ctx)              { return get("button.yes", ctx); }
     public String no(CommandContext ctx)               { return get("button.no", ctx); }

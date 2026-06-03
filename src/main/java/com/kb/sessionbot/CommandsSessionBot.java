@@ -64,7 +64,7 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
             .filter(command -> !command.hidden())
             .map(command -> BotCommand.builder().command(command.getCommandIdentifier()).description(command.getDescription()).build())
             .collectList()
-            .map(commands -> (PartialBotApiMethod<?>) SetMyCommands.builder().commands(commands).build())
+            .map(commands -> SetMyCommands.builder().commands(commands).build())
             .subscribe(messageExecutor::execute, error -> log.error("Bot pipeline terminated unexpectedly", error));
 
         subscriptions.add(setMyCommands);

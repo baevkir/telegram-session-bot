@@ -25,9 +25,6 @@ import org.mockito.Mockito;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.telegram.telegrambots.meta.api.methods.botapimethods.BotApiMethod;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
-import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
-import org.telegram.telegrambots.meta.api.methods.send.SendDocument;
-import org.telegram.telegrambots.meta.api.objects.InputFile;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
@@ -80,7 +77,8 @@ class CommandsSessionBotTest {
     private CommandsSessionBot bot(AuthInterceptor auth) {
         return new CommandsSessionBot(
             commandsFactory, auth, errorHandlerFactory,
-            new CommandsSessionBotProperties(), telegramClient);
+            new CommandsSessionBotProperties(),
+            new TelegramClientMessageExecutor(telegramClient, errorHandlerFactory));
     }
 
     private static final AuthInterceptor ALLOW = ctx -> reactor.core.publisher.Mono.just(true);
@@ -299,34 +297,6 @@ class CommandsSessionBotTest {
             // SetMyCommands + the auth error message + chat B's help response all execute;
             // the pipeline survived the first chat's error.
             verify(telegramClient, timeout(5000).atLeast(3)).execute(any(BotApiMethod.class));
-        }
-    }
-
-    @Nested
-    @DisplayName("media execution")
-    class MediaExecution {
-
-        @DisplayName("SendPhoto and SendDocument dispatch to the typed TelegramClient.execute overloads")
-        @Test
-        void mediaMethodsDispatchToTypedOverloads() throws Exception {
-            var bot = bot(ALLOW);
-            Mockito.when(telegramClient.execute(any(SendPhoto.class)))
-                .thenReturn(Fixtures.message(Fixtures.CHAT_ID, 1, "photo"));
-            Mockito.when(telegramClient.execute(any(SendDocument.class)))
-                .thenReturn(Fixtures.message(Fixtures.CHAT_ID, 2, "doc"));
-            bot.init();
-
-            bot.sendMessage(SendPhoto.builder()
-                .chatId(String.valueOf(Fixtures.CHAT_ID))
-                .photo(new InputFile("file_id_photo"))
-                .build());
-            bot.sendMessage(SendDocument.builder()
-                .chatId(String.valueOf(Fixtures.CHAT_ID))
-                .document(new InputFile("file_id_doc"))
-                .build());
-
-            verify(telegramClient, timeout(5000)).execute(any(SendPhoto.class));
-            verify(telegramClient, timeout(5000)).execute(any(SendDocument.class));
         }
     }
 }

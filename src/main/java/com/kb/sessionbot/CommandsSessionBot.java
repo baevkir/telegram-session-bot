@@ -11,21 +11,11 @@ import com.kb.sessionbot.model.UpdateWrapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.Assert;
 import org.telegram.telegrambots.longpolling.util.LongPollingSingleThreadUpdateConsumer;
-import org.telegram.telegrambots.meta.api.methods.botapimethods.BotApiMethod;
 import org.telegram.telegrambots.meta.api.methods.botapimethods.PartialBotApiMethod;
 import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands;
-import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
-import org.telegram.telegrambots.meta.api.methods.send.SendDocument;
-import org.telegram.telegrambots.meta.api.methods.send.SendVideo;
-import org.telegram.telegrambots.meta.api.methods.send.SendAudio;
-import org.telegram.telegrambots.meta.api.methods.send.SendVoice;
-import org.telegram.telegrambots.meta.api.methods.send.SendSticker;
-import org.telegram.telegrambots.meta.api.methods.send.SendAnimation;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.commands.BotCommand;
-import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
-import org.telegram.telegrambots.meta.generics.TelegramClient;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
@@ -48,7 +38,7 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
     private final ErrorHandlerFactory errorHandler;
     private final AuthInterceptor authInterceptor;
     private final CommandsSessionBotProperties properties;
-    private final TelegramClient telegramClient;
+    private final MessageExecutor messageExecutor;
     private final Sinks.Many<Update> updatesSink = Sinks.many().unicast().onBackpressureBuffer();
     private final Sinks.Many<PartialBotApiMethod<?>> messagesSink = Sinks.many().unicast().onBackpressureBuffer();
     private Disposable subscription;
@@ -58,13 +48,13 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
         AuthInterceptor authInterceptor,
         ErrorHandlerFactory errorHandler,
         CommandsSessionBotProperties properties,
-        TelegramClient telegramClient
+        MessageExecutor messageExecutor
     ) {
         this.commandsFactory = commandsFactory;
         this.errorHandler = errorHandler;
         this.authInterceptor = authInterceptor;
         this.properties = properties;
-        this.telegramClient = telegramClient;
+        this.messageExecutor = messageExecutor;
     }
 
     public void sendMessage(PartialBotApiMethod<?> message) {
@@ -146,30 +136,7 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
             });
     }
 
-    @SuppressWarnings("unchecked")
     private <T extends Serializable> T executeMessage(PartialBotApiMethod<T> message) {
-        try {
-            log.debug("Executing {}", message.getClass().getSimpleName());
-            return switch (message) {
-                case BotApiMethod<?> botApiMethod -> telegramClient.execute((BotApiMethod<T>) botApiMethod);
-                case SendPhoto sendPhoto -> (T) telegramClient.execute(sendPhoto);
-                case SendDocument sendDocument -> (T) telegramClient.execute(sendDocument);
-                case SendVideo sendVideo -> (T) telegramClient.execute(sendVideo);
-                case SendAudio sendAudio -> (T) telegramClient.execute(sendAudio);
-                case SendVoice sendVoice -> (T) telegramClient.execute(sendVoice);
-                case SendSticker sendSticker -> (T) telegramClient.execute(sendSticker);
-                case SendAnimation sendAnimation -> (T) telegramClient.execute(sendAnimation);
-                default -> {
-                    log.warn("Unsupported message type {}; routing through error handler", message.getClass().getSimpleName());
-                    errorHandler.handle(new UnsupportedOperationException(
-                        "Message type " + message.getClass().getSimpleName() + " is not supported"))
-                        .subscribe(this::executeMessage);
-                    yield null;
-                }
-            };
-        } catch (TelegramApiException e) {
-            log.error("Cannot execute message in chat (type={})", message.getClass().getSimpleName(), e);
-            return null;
-        }
+        return messageExecutor.execute(message);
     }
 }

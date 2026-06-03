@@ -8,6 +8,7 @@ import com.kb.sessionbot.commands.dispatcher.annotations.BotCommand;
 import com.kb.sessionbot.commands.dispatcher.parameters.ParameterRenderer;
 import com.kb.sessionbot.commands.dispatcher.parameters.ParameterRequest;
 import com.kb.sessionbot.errors.exception.BotCommandException;
+import com.kb.sessionbot.i18n.BotLabels;
 import com.kb.sessionbot.model.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -90,7 +91,7 @@ public class CommandsDispatcher {
                             invocationResult.invocationArgument = getRenderer(parameter).render(
                                 ParameterRequest.builder()
                                     .index(index)
-                                    .text(String.format("Пожалуйста укажите поле '%s'.", parameter.getDisplayName()))
+                                    .text(labels().missingParameter(context, labels().resolve(parameter.getDisplayName(), context)))
                                     .parameterType(parameter.getParameterType())
                                     .required(parameter.isRequired())
                                     .context(context)
@@ -169,6 +170,10 @@ public class CommandsDispatcher {
         return Optional.empty();
     }
 
+    private BotLabels labels() {
+        return applicationContext.getBean(BotLabels.class);
+    }
+
     private ParameterRenderer getDefaultRenderer() {
         return applicationContext.getBean("defaultParameterRenderer", ParameterRenderer.class);
     }
@@ -188,7 +193,7 @@ public class CommandsDispatcher {
                 ParameterRequest.builder()
                     .context(commandContext)
                     .required(true)
-                    .text(String.format("Опции %s не поддерживаются для команды %s", options, commandContext.getCommand()))
+                    .text(labels().unsupportedOptions(commandContext, options, commandContext.getCommand()))
                     .parameterType(String.class)
                     .build()
             );

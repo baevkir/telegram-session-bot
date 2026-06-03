@@ -3,6 +3,7 @@ package com.kb.sessionbot;
 import com.kb.sessionbot.fixtures.Fixtures;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.telegram.telegrambots.meta.api.objects.Update;
 import reactor.test.StepVerifier;
 
 import java.time.Duration;
@@ -35,6 +36,21 @@ class SinkInboundUpdateBusTest {
             .then(() -> bus.emit(Fixtures.messageUpdate(1, 100L, 1, "/order?buy")))
             .then(() -> bus.emit(Fixtures.messageUpdate(2, 200L, 2, "/order?buy")))
             .expectNext("100", "200")
+            .thenCancel()
+            .verify();
+    }
+
+    @DisplayName("an update without a chat id is skipped and does not terminate the inbound stream")
+    @Test
+    void updateWithoutChatIdIsSkipped() {
+        var bus = new SinkInboundUpdateBus(Duration.ofMinutes(30));
+        var noChat = new Update();
+        noChat.setUpdateId(1); // neither message nor callback query -> no chat id
+
+        StepVerifier.create(bus.updates().map(ChatUpdateStream::chatId))
+            .then(() -> bus.emit(noChat))   // skipped, must not error the stream
+            .then(() -> bus.emit(Fixtures.messageUpdate(2, Fixtures.CHAT_ID, 100, "/order?buy")))
+            .expectNext(String.valueOf(Fixtures.CHAT_ID))   // the valid update still produces a stream
             .thenCancel()
             .verify();
     }

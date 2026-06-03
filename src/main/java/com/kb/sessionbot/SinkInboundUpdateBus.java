@@ -1,6 +1,7 @@
 package com.kb.sessionbot;
 
 import com.kb.sessionbot.model.UpdateWrapper;
+import lombok.extern.slf4j.Slf4j;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
@@ -14,6 +15,7 @@ import java.time.Duration;
  * are released earlier by the handler). The single producer is the long-polling thread, so
  * {@code emit} uses {@code FAIL_FAST}.
  */
+@Slf4j
 public class SinkInboundUpdateBus implements InboundUpdateBus {
 
     private final Sinks.Many<Update> sink = Sinks.many().unicast().onBackpressureBuffer();
@@ -31,6 +33,13 @@ public class SinkInboundUpdateBus implements InboundUpdateBus {
     @Override
     public Flux<ChatUpdateStream> updates() {
         return sink.asFlux()
+            .<Update>handle((update, downstream) -> {
+                if (update.hasMessage() || update.hasCallbackQuery()) {
+                    downstream.next(update);
+                } else {
+                    log.warn("Skipping update {} without a chat id", update.getUpdateId());
+                }
+            })
             .map(UpdateWrapper::wrap)
             .groupBy(UpdateWrapper::getChatId)
             .map(group -> new ChatUpdateStream(group.key(), group.timeout(idleTtl, Flux.empty())));

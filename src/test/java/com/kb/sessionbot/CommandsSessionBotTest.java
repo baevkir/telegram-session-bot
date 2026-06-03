@@ -24,6 +24,7 @@ import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 import reactor.core.publisher.Mono;
 
+import java.time.Duration;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -72,8 +73,10 @@ class CommandsSessionBotTest {
     private CommandsSessionBot bot(AuthInterceptor auth) {
         var executor = new TelegramClientMessageExecutor(telegramClient, errorHandlerFactory);
         var updateHandler = new TelegramUpdateHandler(commandsFactory, auth, executor);
+        var inboundUpdateBus = new SinkInboundUpdateBus(Duration.ofMinutes(30));
         return new CommandsSessionBot(
-            commandsFactory, errorHandlerFactory, executor, outboundMessageBus, updateHandler);
+            commandsFactory, errorHandlerFactory, executor, outboundMessageBus, updateHandler,
+            inboundUpdateBus, 256);
     }
 
     @DisplayName("consume() drives an update end-to-end to telegramClient.execute")

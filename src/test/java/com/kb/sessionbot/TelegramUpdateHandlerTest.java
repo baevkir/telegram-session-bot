@@ -53,7 +53,7 @@ class TelegramUpdateHandlerTest {
         List<IBotCommand> commands = List.of(
             new DispatcherBotCommand(springContext.getBean(OrderCommand.class), springContext),
             new DispatcherBotCommand(springContext.getBean(EchoCommand.class), springContext));
-        var helpCommand = new HelpCommand(commands);
+        var helpCommand = new HelpCommand(commands, testLabels());
         commandsFactory = new CommandsFactory(helpCommand, commands);
         commandsFactory.start();
 
@@ -145,7 +145,7 @@ class TelegramUpdateHandlerTest {
         StepVerifier.create(handler.handleUpdates(updates))
             .assertNext(m -> {
                 assertThat(m).isInstanceOf(SendMessage.class);
-                assertThat(((SendMessage) m).getText()).contains("Помощь");
+                assertThat(((SendMessage) m).getText()).contains("Help");
             })
             .verifyComplete();
     }
@@ -209,6 +209,14 @@ class TelegramUpdateHandlerTest {
             .verifyComplete();
 
         verify(telegramClient, timeout(2000)).execute(any(BotApiMethod.class));
+    }
+
+    private static com.kb.sessionbot.i18n.BotLabels testLabels() {
+        var ms = new org.springframework.context.support.ResourceBundleMessageSource();
+        ms.setBasenames("sessionbot-labels");
+        ms.setDefaultEncoding("UTF-8");
+        ms.setFallbackToSystemLocale(false);
+        return new com.kb.sessionbot.i18n.BotLabels(ms, new com.kb.sessionbot.i18n.ConfiguredLocaleProvider(java.util.Locale.ENGLISH));
     }
 
     @DisplayName("stream completes after a command closes; a following command is not processed by the same stream")

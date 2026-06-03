@@ -1,6 +1,7 @@
 
 package com.kb.sessionbot.commands;
 
+import com.kb.sessionbot.i18n.BotLabels;
 import com.kb.sessionbot.model.CommandContext;
 import lombok.extern.slf4j.Slf4j;
 import org.reactivestreams.Publisher;
@@ -18,9 +19,11 @@ public class HelpCommand implements IBotCommand {
     public final static String COMMAND_INIT_CHARACTER = "/";
 
     private final List<IBotCommand> botCommands;
+    private final BotLabels labels;
 
-    public HelpCommand(List<IBotCommand> botCommands) {
+    public HelpCommand(List<IBotCommand> botCommands, BotLabels labels) {
         this.botCommands = new ArrayList<>(botCommands);
+        this.labels = labels;
     }
 
     public List<IBotCommand> getBotCommands() {
@@ -34,14 +37,14 @@ public class HelpCommand implements IBotCommand {
 
     @Override
     public String getDescription() {
-        return "Получить список доступных команд.";
+        return labels.helpDescription();
     }
 
     @Override
     public Publisher<? extends PartialBotApiMethod<?>> process(CommandContext commandContext) {
         return Mono.fromSupplier(() -> {
-            StringBuilder helpMessageBuilder = new StringBuilder("<b>Помощь</b>\n");
-            helpMessageBuilder.append("Следующие команды зарегистрированны для бота:\n\n");
+            StringBuilder helpMessageBuilder = new StringBuilder("<b>").append(labels.helpTitle(commandContext)).append("</b>\n");
+            helpMessageBuilder.append(labels.helpIntro(commandContext)).append("\n\n");
 
             helpMessageBuilder.append(getCommandPresenter(this)).append("\n\n");
 

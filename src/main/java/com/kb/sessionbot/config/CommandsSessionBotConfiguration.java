@@ -121,8 +121,8 @@ public class CommandsSessionBotConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public HelpCommand helpCommand(List<IBotCommand> botCommands) {
-        return new HelpCommand(botCommands);
+    public HelpCommand helpCommand(List<IBotCommand> botCommands, BotLabels botLabels) {
+        return new HelpCommand(botCommands, botLabels);
     }
 
     @Bean

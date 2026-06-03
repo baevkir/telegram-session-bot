@@ -1,19 +1,11 @@
 package com.kb.sessionbot;
 
-import com.kb.sessionbot.auth.AuthInterceptor;
 import com.kb.sessionbot.commands.CommandsFactory;
-import com.kb.sessionbot.config.CommandsSessionBotProperties;
-import com.kb.sessionbot.errors.exception.BotAuthException;
 import com.kb.sessionbot.errors.handler.ErrorHandlerFactory;
-import com.kb.sessionbot.model.CommandContext;
-import com.kb.sessionbot.model.ContextState;
 import com.kb.sessionbot.model.UpdateWrapper;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.util.Assert;
 import org.telegram.telegrambots.longpolling.util.LongPollingSingleThreadUpdateConsumer;
-import org.telegram.telegrambots.meta.api.methods.botapimethods.PartialBotApiMethod;
 import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands;
-import org.telegram.telegrambots.meta.api.objects.message.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.commands.BotCommand;
 import reactor.core.Disposable;
@@ -23,39 +15,35 @@ import reactor.core.scheduler.Schedulers;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
-import java.io.Serializable;
 
 /**
- * Reactive long-polling bot. Incoming updates are grouped per chat and folded into an
- * evolving {@link CommandContext}; the matched command's results are executed against the
- * Telegram API through a {@link MessageExecutor}.
+ * Reactive long-polling bot. Incoming updates are grouped per chat and handed to a
+ * {@link TelegramUpdateHandler}; out-of-band messages and the startup command list are
+ * executed through a {@link MessageExecutor}.
  */
 @Slf4j
 public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer {
 
     private final CommandsFactory commandsFactory;
     private final ErrorHandlerFactory errorHandler;
-    private final AuthInterceptor authInterceptor;
-    private final CommandsSessionBotProperties properties;
     private final MessageExecutor messageExecutor;
     private final OutboundMessages outboundMessages;
+    private final TelegramUpdateHandler updateHandler;
     private final Sinks.Many<Update> updatesSink = Sinks.many().unicast().onBackpressureBuffer();
     private Disposable subscription;
 
     public CommandsSessionBot(
         CommandsFactory commandsFactory,
-        AuthInterceptor authInterceptor,
         ErrorHandlerFactory errorHandler,
-        CommandsSessionBotProperties properties,
         MessageExecutor messageExecutor,
-        OutboundMessages outboundMessages
+        OutboundMessages outboundMessages,
+        TelegramUpdateHandler updateHandler
     ) {
         this.commandsFactory = commandsFactory;
         this.errorHandler = errorHandler;
-        this.authInterceptor = authInterceptor;
-        this.properties = properties;
         this.messageExecutor = messageExecutor;
         this.outboundMessages = outboundMessages;
+        this.updateHandler = updateHandler;
     }
 
     @Override
@@ -73,16 +61,16 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
             .map(commands -> SetMyCommands.builder().commands(commands).build());
 
         this.subscription = Flux.concat(
-                setMyCommands.doOnNext(this::executeMessage),
+                setMyCommands.doOnNext(messageExecutor::execute),
                 updatesSink.asFlux()
                     .map(UpdateWrapper::wrap)
                     .groupBy(UpdateWrapper::getChatId)
-                    .flatMap(updates -> this.handleUpdates(updates.publishOn(Schedulers.boundedElastic()))
+                    .flatMap(updates -> updateHandler.handleUpdates(updates.publishOn(Schedulers.boundedElastic()))
                         .onErrorResume(error -> {
                             log.warn("Handling pipeline error in a chat group", error);
-                            return errorHandler.handle(error).doOnNext(this::executeMessage);
+                            return errorHandler.handle(error).doOnNext(messageExecutor::execute);
                         }))
-                    .mergeWith(outboundMessages.messages().publishOn(Schedulers.boundedElastic()).doOnNext(this::executeMessage))
+                    .mergeWith(outboundMessages.messages().publishOn(Schedulers.boundedElastic()).doOnNext(messageExecutor::execute))
             ).subscribe(
                 message -> { },
                 error -> log.error("Bot pipeline terminated unexpectedly", error)
@@ -94,46 +82,5 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
         if (subscription != null && !subscription.isDisposed()) {
             subscription.dispose();
         }
-    }
-
-    Flux<PartialBotApiMethod<?>> handleUpdates(Flux<UpdateWrapper> updates) {
-        Assert.notNull(updates, "Updates is null.");
-        return updates
-            .scanWith(CommandContext::empty, (context, update) -> {
-                if (update.isCommand()) {
-                    return CommandContext.create(update);
-                }
-                if (update.getDynamicParams().needRefreshContext() && !context.isEmpty()) {
-                    return CommandContext.create(context.getCommandUpdate()).addUpdate(update);
-                }
-                return context.addUpdate(update);
-            })
-            .skip(1)
-            .concatMap(context -> {
-                if (context.isEmpty()) {
-                    return Flux.from(commandsFactory.getHelpCommand().process(context)).doOnNext(this::executeMessage);
-                }
-                log.debug("Dispatching command '{}' in chat {} (state={})", context.getCommand(), context.getChatId(), context.getState());
-                return authInterceptor.intercept(context)
-                    .flatMapMany(result -> {
-                        if (!result) {
-                            var from = context.getCommandUpdate().getFrom();
-                            var username = from != null ? from.getUserName() : "unknown";
-                            log.debug("Auth rejected for command '{}' in chat {} (user={})", context.getCommand(), context.getChatId(), username);
-                            return Flux.error(new BotAuthException(context, "User " + username + " is unauthorized to use bot."));
-                        }
-                        return commandsFactory.getCommand(context.getCommand()).process(context);
-                    })
-                    .doOnNext(message -> {
-                        var result = this.executeMessage(message);
-                        if (result instanceof Message resultMessage && ContextState.progress.equals(context.getState())) {
-                            context.addQuestionMessage(resultMessage);
-                        }
-                    });
-            });
-    }
-
-    private <T extends Serializable> T executeMessage(PartialBotApiMethod<T> message) {
-        return messageExecutor.execute(message);
     }
 }

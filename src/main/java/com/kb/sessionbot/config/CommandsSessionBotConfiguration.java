@@ -4,6 +4,7 @@ import com.kb.sessionbot.CommandsSessionBot;
 import com.kb.sessionbot.MessageExecutor;
 import com.kb.sessionbot.OutboundMessages;
 import com.kb.sessionbot.TelegramClientMessageExecutor;
+import com.kb.sessionbot.TelegramUpdateHandler;
 import com.kb.sessionbot.auth.AuthInterceptor;
 import com.kb.sessionbot.commands.CommandsFactory;
 import com.kb.sessionbot.commands.HelpCommand;
@@ -70,14 +71,22 @@ public class CommandsSessionBotConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean
+    public TelegramUpdateHandler telegramUpdateHandler(
+            CommandsFactory commandsFactory,
+            AuthInterceptor authInterceptor,
+            MessageExecutor messageExecutor) {
+        return new TelegramUpdateHandler(commandsFactory, authInterceptor, messageExecutor);
+    }
+
+    @Bean
     public CommandsSessionBot bot(
             CommandsFactory commandsFactory,
             ErrorHandlerFactory errorHandler,
-            AuthInterceptor authInterceptor,
-            CommandsSessionBotProperties properties,
             MessageExecutor messageExecutor,
-            OutboundMessages outboundMessages) {
-        return new CommandsSessionBot(commandsFactory, authInterceptor, errorHandler, properties, messageExecutor, outboundMessages);
+            OutboundMessages outboundMessages,
+            TelegramUpdateHandler telegramUpdateHandler) {
+        return new CommandsSessionBot(commandsFactory, errorHandler, messageExecutor, outboundMessages, telegramUpdateHandler);
     }
 
 

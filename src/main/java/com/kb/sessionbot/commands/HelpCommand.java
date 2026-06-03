@@ -1,6 +1,7 @@
 
 package com.kb.sessionbot.commands;
 
+import com.kb.sessionbot.i18n.BotLabels;
 import com.kb.sessionbot.model.CommandContext;
 import lombok.extern.slf4j.Slf4j;
 import org.reactivestreams.Publisher;
@@ -18,9 +19,11 @@ public class HelpCommand implements IBotCommand {
     public final static String COMMAND_INIT_CHARACTER = "/";
 
     private final List<IBotCommand> botCommands;
+    private final BotLabels labels;
 
-    public HelpCommand(List<IBotCommand> botCommands) {
+    public HelpCommand(List<IBotCommand> botCommands, BotLabels labels) {
         this.botCommands = new ArrayList<>(botCommands);
+        this.labels = labels;
     }
 
     public List<IBotCommand> getBotCommands() {
@@ -33,21 +36,22 @@ public class HelpCommand implements IBotCommand {
     }
 
     @Override
-    public String getDescription() {
-        return "Получить список доступных команд.";
+    public String getDescription(String userName) {
+        return labels.helpDescription(userName);
     }
 
     @Override
     public Publisher<? extends PartialBotApiMethod<?>> process(CommandContext commandContext) {
         return Mono.fromSupplier(() -> {
-            StringBuilder helpMessageBuilder = new StringBuilder("<b>Помощь</b>\n");
-            helpMessageBuilder.append("Следующие команды зарегистрированны для бота:\n\n");
+            var userName = userName(commandContext);
+            StringBuilder helpMessageBuilder = new StringBuilder("<b>").append(labels.helpTitle(commandContext)).append("</b>\n");
+            helpMessageBuilder.append(labels.helpIntro(commandContext)).append("\n\n");
 
-            helpMessageBuilder.append(getCommandPresenter(this)).append("\n\n");
+            helpMessageBuilder.append(getCommandPresenter(this, userName)).append("\n\n");
 
             botCommands.stream()
                 .filter(Predicate.not(IBotCommand::hidden))
-                .forEach(botCommand -> helpMessageBuilder.append(getCommandPresenter(botCommand)).append("\n\n"));
+                .forEach(botCommand -> helpMessageBuilder.append(getCommandPresenter(botCommand, userName)).append("\n\n"));
 
             return SendMessage.builder()
                 .chatId(commandContext.getChatId())
@@ -57,8 +61,16 @@ public class HelpCommand implements IBotCommand {
         });
     }
 
-    private String getCommandPresenter(IBotCommand command) {
+    private String getCommandPresenter(IBotCommand command, String userName) {
             return "<b>" + COMMAND_INIT_CHARACTER + command.getCommandIdentifier() +
-                    "</b>\n" + command.getDescription();
+                    "</b>\n" + command.getDescription(userName);
+    }
+
+    private String userName(CommandContext context) {
+        var update = context.getCommandUpdate();
+        if (update == null || update.getFrom() == null) {
+            return null;
+        }
+        return update.getFrom().getUserName();
     }
 }

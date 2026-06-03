@@ -14,11 +14,13 @@ public interface IBotCommand {
     String getCommandIdentifier();
 
     /**
-     * Get the description of this command
+     * Get the description of this command, localized for the given user.
      *
+     * @param userName the Telegram user name to resolve the language for; {@code null} for the
+     *                 bot-wide/configured language (e.g. the startup command list, which has no user)
      * @return the description as String
      */
-    String getDescription();
+    String getDescription(String userName);
 
     /**
      * @return the true if bot command should not show in help

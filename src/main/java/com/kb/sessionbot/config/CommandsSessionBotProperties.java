@@ -10,6 +10,8 @@ import java.time.Duration;
 public class CommandsSessionBotProperties {
     private String token;
     private String botUsername;
+    /** Bot-wide language tag for built-in labels (e.g. en, uk, ru). */
+    private String language = "en";
     /** Idle period after which an inactive chat's update stream is released. */
     private Duration chatIdleTtl = Duration.ofMinutes(30);
     /** Maximum number of chats processed concurrently (per-chat fan-out concurrency). */

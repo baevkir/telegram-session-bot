@@ -1,6 +1,7 @@
 package com.kb.sessionbot.commands.dispatcher.parameters;
 
 import com.kb.sessionbot.commands.CommandBuilder;
+import com.kb.sessionbot.i18n.BotLabels;
 import com.kb.sessionbot.model.UpdateWrapper;
 import org.reactivestreams.Publisher;
 import org.telegram.telegrambots.meta.api.methods.botapimethods.PartialBotApiMethod;
@@ -12,6 +13,7 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
 import reactor.core.publisher.Mono;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -19,6 +21,12 @@ import java.util.*;
 import static java.time.format.DateTimeFormatter.ISO_DATE;
 
 public class DateParameterRenderer implements ParameterRenderer {
+    private final BotLabels labels;
+
+    public DateParameterRenderer(BotLabels labels) {
+        this.labels = labels;
+    }
+
     private static final String DATE_PROPERTY = "date-renderer-date";
     private static final String CONTINUE_CHOOSE = "date-renderer-continue";
 
@@ -41,7 +49,7 @@ public class DateParameterRenderer implements ParameterRenderer {
             return SendMessage
                 .builder()
                 .chatId(parameterRequest.getContext().getChatId())
-                .text(String.format("%s (Формат: %s)", parameterRequest.getText(), LocalDate.now().format(ISO_DATE)))
+                .text(labels.dateFormatHint(parameterRequest.getContext(), parameterRequest.getText(), LocalDate.now().format(ISO_DATE)))
                 .replyMarkup(buildKeyBoard(parameterRequest, date))
                 .build();
         });
@@ -59,31 +67,31 @@ public class DateParameterRenderer implements ParameterRenderer {
 
         rowsInline.add(new InlineKeyboardRow(
             InlineKeyboardButton.builder()
-                .text("Пн")
+                .text(labels.weekday(parameterRequest.getContext(), DayOfWeek.MONDAY))
                 .callbackData(CommandBuilder.create().addParam(DATE_PROPERTY, date.format(ISO_DATE)).addParam(CONTINUE_CHOOSE).build())
                 .build(),
             InlineKeyboardButton.builder()
-                .text("Вт")
+                .text(labels.weekday(parameterRequest.getContext(), DayOfWeek.TUESDAY))
                 .callbackData(CommandBuilder.create().addParam(DATE_PROPERTY, date.format(ISO_DATE)).addParam(CONTINUE_CHOOSE).build())
                 .build(),
             InlineKeyboardButton.builder()
-                .text("Ср")
+                .text(labels.weekday(parameterRequest.getContext(), DayOfWeek.WEDNESDAY))
                 .callbackData(CommandBuilder.create().addParam(DATE_PROPERTY, date.format(ISO_DATE)).addParam(CONTINUE_CHOOSE).build())
                 .build(),
             InlineKeyboardButton.builder()
-                .text("Чт")
+                .text(labels.weekday(parameterRequest.getContext(), DayOfWeek.THURSDAY))
                 .callbackData(CommandBuilder.create().addParam(DATE_PROPERTY, date.format(ISO_DATE)).addParam(CONTINUE_CHOOSE).build())
                 .build(),
             InlineKeyboardButton.builder()
-                .text("Пт")
+                .text(labels.weekday(parameterRequest.getContext(), DayOfWeek.FRIDAY))
                 .callbackData(CommandBuilder.create().addParam(DATE_PROPERTY, date.format(ISO_DATE)).addParam(CONTINUE_CHOOSE).build())
                 .build(),
             InlineKeyboardButton.builder()
-                .text("Сб")
+                .text(labels.weekday(parameterRequest.getContext(), DayOfWeek.SATURDAY))
                 .callbackData(CommandBuilder.create().addParam(DATE_PROPERTY, date.format(ISO_DATE)).addParam(CONTINUE_CHOOSE).build())
                 .build(),
             InlineKeyboardButton.builder()
-                .text("Вс")
+                .text(labels.weekday(parameterRequest.getContext(), DayOfWeek.SUNDAY))
                 .callbackData(CommandBuilder.create().addParam(DATE_PROPERTY, date.format(ISO_DATE)).addParam(CONTINUE_CHOOSE).build())
                 .build()
         ));
@@ -147,7 +155,7 @@ public class DateParameterRenderer implements ParameterRenderer {
         if (!parameterRequest.isRequired()) {
             rowsInline.add(
                 new InlineKeyboardRow(InlineKeyboardButton.builder()
-                    .text("Пропусить")
+                    .text(labels.skip(parameterRequest.getContext()))
                     .callbackData(CommandBuilder.create().scipAnswer(parameterRequest.getIndex()).build())
                     .build())
             );

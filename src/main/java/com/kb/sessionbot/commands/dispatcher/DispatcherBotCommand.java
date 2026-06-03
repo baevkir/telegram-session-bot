@@ -1,6 +1,7 @@
 package com.kb.sessionbot.commands.dispatcher;
 
 import com.kb.sessionbot.commands.IBotCommand;
+import com.kb.sessionbot.i18n.BotLabels;
 import com.kb.sessionbot.model.CommandContext;
 import com.kb.sessionbot.model.ContextState;
 import lombok.extern.slf4j.Slf4j;
@@ -24,9 +25,11 @@ import reactor.core.publisher.Mono;
 public class DispatcherBotCommand implements IBotCommand {
 
     private final CommandsDispatcher commandsDispatcher;
+    private final ApplicationContext applicationContext;
 
     public DispatcherBotCommand(Object handler, ApplicationContext applicationContext) {
         this.commandsDispatcher = new CommandsDispatcher(handler, applicationContext);
+        this.applicationContext = applicationContext;
     }
 
     public Publisher<? extends PartialBotApiMethod<?>> process(CommandContext commandContext) {
@@ -79,8 +82,9 @@ public class DispatcherBotCommand implements IBotCommand {
     }
 
     @Override
-    public String getDescription() {
-        return commandsDispatcher.getCommandDescription();
+    public String getDescription(String userName) {
+        return applicationContext.getBean(BotLabels.class)
+            .resolve(commandsDispatcher.getCommandDescription(), userName);
     }
 
     @Override

@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Extract inbound update intake into a swappable `InboundUpdateBus` SPI whose default groups updates per chat with `groupBy` + an idle `timeout`, and make `TelegramUpdateHandler` complete a chat's stream as soon as a command closes — fixing `groupBy`'s unbounded-group / 256-slot footguns without a cache.
+**Goal:** Extract inbound update intake into a swappable `InboundUpdateBus` SPI whose default groups updates per chat with `groupBy` + an idle `timeout`, fixing `groupBy`'s unbounded-group / 256-slot footguns without a cache and without touching `TelegramUpdateHandler`.
 
-**Architecture:** `consume()` calls `inboundUpdateBus.emit(update)`. The default `SinkInboundUpdateBus` exposes `Flux<ChatUpdateStream>` via `sink → map(wrap) → groupBy(chatId) → map(g → ChatUpdateStream(key, g.timeout(idleTtl, empty)))`. The coordinator `flatMap`s (bounded by `maxConcurrentChats`) each stream into `handleUpdates`, which now `takeUntil(close)` so completed conversations release immediately; the idle `timeout` is the safety net for abandoned ones.
+**Architecture:** `consume()` calls `inboundUpdateBus.emit(update)`. The default `SinkInboundUpdateBus` exposes `Flux<ChatUpdateStream>` via `sink → map(wrap) → groupBy(chatId) → map(g → ChatUpdateStream(key, g.timeout(idleTtl, empty)))`. The coordinator `flatMap`s (bounded by `maxConcurrentChats`) each stream into the existing `handleUpdates`. Idle chats are released by the per-group `timeout`.
 
-**Tech Stack:** Java 21, Maven, Spring Boot 3.5, Project Reactor (`groupBy`/`timeout`/`takeUntil`/`flatMap`), Lombok, JUnit 5, Mockito, AssertJ, `reactor-test` `StepVerifier`. No new third-party dependency.
+**Tech Stack:** Java 21, Maven, Spring Boot 3.5, Project Reactor (`groupBy`/`timeout`/`flatMap`), Lombok, JUnit 5, Mockito, AssertJ, `reactor-test` `StepVerifier`. No new third-party dependency.
 
 Source of truth: `docs/superpowers/specs/2026-06-03-inbound-update-bus-design.md`.
 
@@ -14,127 +14,35 @@ Source of truth: `docs/superpowers/specs/2026-06-03-inbound-update-bus-design.md
 
 ## Environment & conventions
 
-- **Build under Java 21.** The default JDK may be newer and crash Lombok during annotation
-  processing. Before every build run:
+- **Build under Java 21.** Before every build run:
   ```bash
   export JAVA_HOME=$(/usr/libexec/java_home -v 21)   # ms-21.0.8 is installed
   ```
-- **Per-task build gate:** `mvn clean test-compile`. This is the mechanical gate the executor runs.
-- **Test execution is owner-run** (project convention: never run the test suite unless the
-  maintainer asks). Each task lists the focused `mvn test -Dtest=<Class>` command to run; the
-  maintainer runs it for behavioral verification. Tests are still written test-first.
-- **One commit per task.** Conventional messages (`feat:`, `refactor:`, `test:`). **No AI / Claude
-  attribution trailers.** Never stage `.DS_Store`, `.claude/`, `.idea/`, or `target/`.
+- **Per-task build gate:** `mvn clean test-compile`.
+- **Test execution authorized for this run:** each task lists a focused `mvn test -Dtest=<Class>`
+  command; run it (write-fail-fix-pass). Do **not** run the full `mvn test` suite.
+- **One commit per task.** Conventional messages. **No AI / Claude attribution trailers.** Never
+  stage `.DS_Store`, `.claude/`, `.idea/`, or `target/`.
 - **Reuse existing fixtures** (`Fixtures`, `OrderCommand`, `EchoCommand`, `FixtureCommandConfig`).
-- **Branch:** work on `inbound-update-bus` (already created off merged `master`).
+- **Branch:** `inbound-update-bus` (already created off merged `master`).
+- **`TelegramUpdateHandler` is NOT modified by this plan.**
 
 ## File structure
 
 | File | Action | Task |
 |------|--------|------|
-| `src/main/java/com/kb/sessionbot/TelegramUpdateHandler.java` | Modify (`takeUntil(close)`) | 1 |
-| `src/test/java/com/kb/sessionbot/TelegramUpdateHandlerTest.java` | Modify (eager-completion test) | 1 |
-| `src/main/java/com/kb/sessionbot/ChatUpdateStream.java` | Create | 2 |
-| `src/main/java/com/kb/sessionbot/InboundUpdateBus.java` | Create | 2 |
-| `src/main/java/com/kb/sessionbot/SinkInboundUpdateBus.java` | Create | 3 |
-| `src/test/java/com/kb/sessionbot/SinkInboundUpdateBusTest.java` | Create | 3 |
-| `src/main/java/com/kb/sessionbot/config/CommandsSessionBotProperties.java` | Modify (2 properties) | 4 |
-| `src/main/java/com/kb/sessionbot/CommandsSessionBot.java` | Modify (consume + init + fields) | 5 |
-| `src/main/java/com/kb/sessionbot/config/CommandsSessionBotConfiguration.java` | Modify (bean + wiring) | 5 |
-| `src/test/java/com/kb/sessionbot/CommandsSessionBotTest.java` | Modify (retarget factory) | 5 |
+| `src/main/java/com/kb/sessionbot/ChatUpdateStream.java` | Create | 1 |
+| `src/main/java/com/kb/sessionbot/InboundUpdateBus.java` | Create | 1 |
+| `src/main/java/com/kb/sessionbot/SinkInboundUpdateBus.java` | Create | 2 |
+| `src/test/java/com/kb/sessionbot/SinkInboundUpdateBusTest.java` | Create | 2 |
+| `src/main/java/com/kb/sessionbot/config/CommandsSessionBotProperties.java` | Modify (2 properties) | 3 |
+| `src/main/java/com/kb/sessionbot/CommandsSessionBot.java` | Modify (consume + init + fields) | 4 |
+| `src/main/java/com/kb/sessionbot/config/CommandsSessionBotConfiguration.java` | Modify (bean + wiring) | 4 |
+| `src/test/java/com/kb/sessionbot/CommandsSessionBotTest.java` | Modify (retarget factory) | 4 |
 
 ---
 
-## Task 1: Eager stream completion on command close
-
-**Files:**
-- Modify: `src/main/java/com/kb/sessionbot/TelegramUpdateHandler.java:50` (between `.skip(1)` and `.concatMap(`)
-- Test: `src/test/java/com/kb/sessionbot/TelegramUpdateHandlerTest.java`
-
-This task is independent of the bus and improves the current `groupBy` path too (a completed group now completes and is evicted instead of lingering).
-
-- [ ] **Step 1: Write the failing test**
-
-Add this method to `TelegramUpdateHandlerTest` (the class already has the `handler(AuthInterceptor)`
-helper, `ALLOW`, `Fixtures`, `Flux`, `StepVerifier`, `SendMessage`, `assertThat` in scope):
-
-```java
-    @DisplayName("stream completes after a command closes; a following command is not processed by the same stream")
-    @Test
-    void completesAfterCommandClose() {
-        var handler = handler(ALLOW);
-        var updates = Flux.just(
-            Fixtures.wrap(Fixtures.messageUpdate(1, Fixtures.CHAT_ID, 100, "/order?buy&book")),
-            Fixtures.wrap(Fixtures.messageUpdate(2, Fixtures.CHAT_ID, 101, "/order?buy&pen")));
-
-        StepVerifier.create(handler.handleUpdates(updates)
-                .filter(m -> m instanceof SendMessage)
-                .map(m -> ((SendMessage) m).getText()))
-            .expectNext("buy:book")   // first command's close result
-            .verifyComplete();        // stream closed after first close -> "buy:pen" never processed
-    }
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `mvn test -Dtest=TelegramUpdateHandlerTest#completesAfterCommandClose`
-Expected: FAIL — without `takeUntil`, the stream also processes the second command and emits
-`"buy:pen"`, so `verifyComplete()` fails (unexpected extra `onNext`).
-
-- [ ] **Step 3: Add `takeUntil(close)` to `handleUpdates`**
-
-In `TelegramUpdateHandler.handleUpdates`, insert the `takeUntil` between `.skip(1)` and
-`.concatMap(`. Before:
-
-```java
-            .skip(1)
-            .concatMap(context -> {
-```
-
-After:
-
-```java
-            .skip(1)
-            .takeUntil(context -> ContextState.close.equals(context.getState()))
-            .concatMap(context -> {
-```
-
-`ContextState` is already imported. `takeUntil` relays the `close`-state context (so `concatMap`
-still emits its completion results, including any cleanup `DeleteMessage`s) and then completes.
-
-- [ ] **Step 4: Run the test to verify it passes**
-
-Run: `mvn test -Dtest=TelegramUpdateHandlerTest` (maintainer-run)
-Expected: PASS — `completesAfterCommandClose` plus all existing handler cases stay green
-(`commandStartsFreshContext`, `nonCommandAppendsToContext`, `refreshContextRebuild`, etc. all end on
-a `close` or complete naturally, so `takeUntil` does not change their observable output).
-
-- [ ] **Step 5: Build gate**
-
-Run: `export JAVA_HOME=$(/usr/libexec/java_home -v 21); mvn clean test-compile`
-Expected: BUILD SUCCESS.
-
-- [ ] **Step 6: Verification point (read-only check)**
-
-Open `src/main/java/com/kb/sessionbot/commands/dispatcher/DispatcherBotCommand.java` and confirm the
-`close`-state cleanup (`DeleteMessage` of prior question/answer messages) is emitted **while
-processing the close context** (same dispatch that produces the final result), not on a subsequent
-update. The passing `completesAfterCommandClose` and the existing `nonCommandAppendsToContext`
-(which exercises a progress→close multi-step) confirm this in practice. If cleanup were emitted on a
-later signal, the predicate would need to fire one context later — note any deviation in the commit
-message.
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add src/main/java/com/kb/sessionbot/TelegramUpdateHandler.java \
-        src/test/java/com/kb/sessionbot/TelegramUpdateHandlerTest.java
-git commit -m "feat: complete a chat stream when its command closes"
-```
-
----
-
-## Task 2: `ChatUpdateStream` holder + `InboundUpdateBus` SPI
+## Task 1: `ChatUpdateStream` holder + `InboundUpdateBus` SPI
 
 **Files:**
 - Create: `src/main/java/com/kb/sessionbot/ChatUpdateStream.java`
@@ -193,7 +101,7 @@ git commit -m "feat: add InboundUpdateBus SPI and ChatUpdateStream holder"
 
 ---
 
-## Task 3: `SinkInboundUpdateBus` default implementation
+## Task 2: `SinkInboundUpdateBus` default implementation
 
 **Files:**
 - Create: `src/main/java/com/kb/sessionbot/SinkInboundUpdateBus.java`
@@ -283,8 +191,8 @@ class SinkInboundUpdateBusTest {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `mvn test -Dtest=SinkInboundUpdateBusTest`
-Expected: FAIL to compile / run — `SinkInboundUpdateBus` does not exist yet.
+Run: `export JAVA_HOME=$(/usr/libexec/java_home -v 21); mvn test -Dtest=SinkInboundUpdateBusTest`
+Expected: FAIL to compile — `SinkInboundUpdateBus` does not exist yet.
 
 - [ ] **Step 3: Create `SinkInboundUpdateBus.java`**
 
@@ -331,7 +239,7 @@ public class SinkInboundUpdateBus implements InboundUpdateBus {
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `mvn test -Dtest=SinkInboundUpdateBusTest` (maintainer-run)
+Run: `export JAVA_HOME=$(/usr/libexec/java_home -v 21); mvn test -Dtest=SinkInboundUpdateBusTest`
 Expected: PASS — all four cases green.
 
 - [ ] **Step 5: Build gate**
@@ -349,7 +257,7 @@ git commit -m "feat: add SinkInboundUpdateBus default with groupBy + idle timeou
 
 ---
 
-## Task 4: Configuration properties
+## Task 3: Configuration properties
 
 **Files:**
 - Modify: `src/main/java/com/kb/sessionbot/config/CommandsSessionBotProperties.java`
@@ -408,12 +316,12 @@ git commit -m "feat: add chat-idle-ttl and max-concurrent-chats properties"
 
 ---
 
-## Task 5: Wire the bus into the coordinator and auto-configuration
+## Task 4: Wire the bus into the coordinator and auto-configuration
 
 **Files:**
 - Modify: `src/main/java/com/kb/sessionbot/CommandsSessionBot.java` (whole file)
-- Modify: `src/main/java/com/kb/sessionbot/config/CommandsSessionBotConfiguration.java:62-91`
-- Modify: `src/test/java/com/kb/sessionbot/CommandsSessionBotTest.java:72-77` (factory)
+- Modify: `src/main/java/com/kb/sessionbot/config/CommandsSessionBotConfiguration.java` (bean + `bot` wiring)
+- Modify: `src/test/java/com/kb/sessionbot/CommandsSessionBotTest.java` (factory only)
 
 The coordinator constructor changes, so the config bean and the test factory must change in the
 same commit to stay green.
@@ -521,14 +429,15 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
 }
 ```
 
-(Removed vs the previous version: the `Sinks.Many<Update> updatesSink` field, the `consume`
+(Removed vs the current version: the `Sinks.Many<Update> updatesSink` field, the `consume`
 `emitNext`, the `map(UpdateWrapper::wrap).groupBy(...)` in `init`, and the now-unused `UpdateWrapper`
 and `Sinks` imports.)
 
 - [ ] **Step 2: Update the auto-configuration**
 
 In `CommandsSessionBotConfiguration.java`, add the `inboundUpdateBus` bean and repoint the `bot`
-bean. Before (lines ~83-91):
+bean. Add `import com.kb.sessionbot.InboundUpdateBus;` and `import com.kb.sessionbot.SinkInboundUpdateBus;`
+(verify the import block after editing). Before (the `bot` bean):
 
 ```java
     @Bean
@@ -564,13 +473,6 @@ After:
             outboundMessageBus, telegramUpdateHandler, inboundUpdateBus, properties.getMaxConcurrentChats());
     }
 ```
-
-No new imports are needed — `InboundUpdateBus`, `SinkInboundUpdateBus`, and
-`CommandsSessionBotProperties` are in packages already imported or the same module
-(`com.kb.sessionbot` is imported via existing `MessageExecutor`/`OutboundMessageBus` imports; add
-`import com.kb.sessionbot.InboundUpdateBus;` and `import com.kb.sessionbot.SinkInboundUpdateBus;` if
-the file does not already import the `com.kb.sessionbot` types it uses). Verify the import block
-after editing.
 
 - [ ] **Step 3: Update the test factory**
 
@@ -610,10 +512,8 @@ Expected: BUILD SUCCESS.
 
 - [ ] **Step 5: Run the focused suite to verify behavior**
 
-Run: `mvn test -Dtest=CommandsSessionBotTest,TelegramUpdateHandlerTest,SinkInboundUpdateBusTest`
-(maintainer-run)
-Expected: PASS — coordinator end-to-end, failure isolation, outbound, shutdown, the handler's
-eager-completion + fold cases, and the bus cases all green.
+Run: `export JAVA_HOME=$(/usr/libexec/java_home -v 21); mvn test -Dtest=CommandsSessionBotTest,SinkInboundUpdateBusTest`
+Expected: PASS — coordinator end-to-end, failure isolation, outbound, shutdown, and the bus cases all green.
 
 - [ ] **Step 6: Commit**
 
@@ -628,23 +528,20 @@ git commit -m "feat: route updates through InboundUpdateBus with bounded per-cha
 
 ## Owner acceptance
 
-After all tasks: `export JAVA_HOME=$(/usr/libexec/java_home -v 21); mvn test` (full sweep,
-maintainer-run) and finish the branch (merge / PR) via the finishing-a-development-branch flow.
+After all tasks: `export JAVA_HOME=$(/usr/libexec/java_home -v 21); mvn test` (full sweep) and finish
+the branch (merge / PR) via the finishing-a-development-branch flow.
 
 ## Self-review against the spec
 
-- **`InboundUpdateBus` SPI + `ChatUpdateStream`** — Task 2.
-- **`SinkInboundUpdateBus` (`groupBy` + `timeout`, `FAIL_FAST` emit)** — Task 3, with tests for
+- **`InboundUpdateBus` SPI + `ChatUpdateStream`** — Task 1.
+- **`SinkInboundUpdateBus` (`groupBy` + `timeout`, `FAIL_FAST` emit)** — Task 2, with tests for
   announce, distinct chats, idle completion (virtual time), and recreation.
-- **`takeUntil(close)` eager completion in `TelegramUpdateHandler`** — Task 1, with the
-  cleanup-timing verification point.
-- **`chat-idle-ttl` (30m) + `max-concurrent-chats` (256)** — Task 4.
+- **`chat-idle-ttl` (30m) + `max-concurrent-chats` (256)** — Task 3.
 - **Coordinator `consume → emit`, `flatMap(maxConcurrentChats)`, per-chat `onErrorResume` logging
-  `chatId`, `updatesSink` removed** — Task 5.
-- **Auto-config `@ConditionalOnMissingBean InboundUpdateBus` + `bot` wiring** — Task 5.
-- **No new dependency** — confirmed; only Reactor operators used.
+  `chatId`, `updatesSink` removed** — Task 4.
+- **Auto-config `@ConditionalOnMissingBean InboundUpdateBus` + `bot` wiring** — Task 4.
+- **No new dependency; `TelegramUpdateHandler` unchanged** — confirmed.
 - **Type/name consistency:** `InboundUpdateBus.emit/updates`, `ChatUpdateStream(chatId, updates)`,
-  `SinkInboundUpdateBus(Duration)`, `getChatIdleTtl()`/`getMaxConcurrentChats()` (Lombok `@Data`
-  accessors) used consistently across Tasks 2–5.
-- **Accepted limitation (teardown drop-race)** — inherent to `groupBy`; documented in the spec, no
-  task needed.
+  `SinkInboundUpdateBus(Duration)`, `getChatIdleTtl()`/`getMaxConcurrentChats()` (Lombok accessors)
+  used consistently across Tasks 1–4.
+- **Accepted limitation (teardown drop-race)** — inherent to `groupBy`; documented in the spec.

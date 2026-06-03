@@ -19,12 +19,19 @@ import com.kb.sessionbot.errors.handler.BotAuthErrorHandler;
 import com.kb.sessionbot.errors.handler.BotCommandErrorHandler;
 import com.kb.sessionbot.errors.handler.ErrorHandler;
 import com.kb.sessionbot.errors.handler.ErrorHandlerFactory;
+import com.kb.sessionbot.i18n.BotLabels;
+import com.kb.sessionbot.i18n.ConfiguredLocaleProvider;
+import com.kb.sessionbot.i18n.LocaleProvider;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationContext;
+import org.springframework.context.MessageSource;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.support.ResourceBundleMessageSource;
 import org.telegram.telegrambots.client.okhttp.OkHttpTelegramClient;
 import org.telegram.telegrambots.longpolling.TelegramBotsLongPollingApplication;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
@@ -32,6 +39,7 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 /**
@@ -169,5 +177,32 @@ public class CommandsSessionBotConfiguration {
     @ConditionalOnMissingBean
     public AuthInterceptor authInterceptor() {
         return request -> Mono.just(true);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(name = "sessionbotLabelsMessageSource")
+    public MessageSource sessionbotLabelsMessageSource(
+            @Qualifier("messageSource") ObjectProvider<MessageSource> appMessageSource) {
+        var ms = new ResourceBundleMessageSource();
+        ms.setBasenames("sessionbot-labels-override", "sessionbot-labels");
+        ms.setDefaultEncoding("UTF-8");
+        ms.setFallbackToSystemLocale(false);
+        ms.setUseCodeAsDefaultMessage(false);
+        appMessageSource.ifAvailable(ms::setParentMessageSource);
+        return ms;
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public LocaleProvider localeProvider(CommandsSessionBotProperties properties) {
+        return new ConfiguredLocaleProvider(Locale.forLanguageTag(properties.getLanguage()));
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public BotLabels botLabels(
+            @Qualifier("sessionbotLabelsMessageSource") MessageSource sessionbotLabelsMessageSource,
+            LocaleProvider localeProvider) {
+        return new BotLabels(sessionbotLabelsMessageSource, localeProvider);
     }
 }

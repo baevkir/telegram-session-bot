@@ -82,15 +82,9 @@ public class DispatcherBotCommand implements IBotCommand {
     }
 
     @Override
-    public String getDescription() {
+    public String getDescription(String userName) {
         return applicationContext.getBean(BotLabels.class)
-            .resolve(commandsDispatcher.getCommandDescription(), (String) null);
-    }
-
-    @Override
-    public String getDescription(CommandContext context) {
-        return applicationContext.getBean(BotLabels.class)
-            .resolve(commandsDispatcher.getCommandDescription(), context);
+            .resolve(commandsDispatcher.getCommandDescription(), userName);
     }
 
     @Override

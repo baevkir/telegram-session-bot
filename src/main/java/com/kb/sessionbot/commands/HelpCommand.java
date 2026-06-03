@@ -36,26 +36,22 @@ public class HelpCommand implements IBotCommand {
     }
 
     @Override
-    public String getDescription() {
-        return labels.helpDescription();
-    }
-
-    @Override
-    public String getDescription(CommandContext context) {
-        return labels.helpDescription(context);
+    public String getDescription(String userName) {
+        return labels.helpDescription(userName);
     }
 
     @Override
     public Publisher<? extends PartialBotApiMethod<?>> process(CommandContext commandContext) {
         return Mono.fromSupplier(() -> {
+            var userName = userName(commandContext);
             StringBuilder helpMessageBuilder = new StringBuilder("<b>").append(labels.helpTitle(commandContext)).append("</b>\n");
             helpMessageBuilder.append(labels.helpIntro(commandContext)).append("\n\n");
 
-            helpMessageBuilder.append(getCommandPresenter(this, commandContext)).append("\n\n");
+            helpMessageBuilder.append(getCommandPresenter(this, userName)).append("\n\n");
 
             botCommands.stream()
                 .filter(Predicate.not(IBotCommand::hidden))
-                .forEach(botCommand -> helpMessageBuilder.append(getCommandPresenter(botCommand, commandContext)).append("\n\n"));
+                .forEach(botCommand -> helpMessageBuilder.append(getCommandPresenter(botCommand, userName)).append("\n\n"));
 
             return SendMessage.builder()
                 .chatId(commandContext.getChatId())
@@ -65,8 +61,16 @@ public class HelpCommand implements IBotCommand {
         });
     }
 
-    private String getCommandPresenter(IBotCommand command, CommandContext context) {
+    private String getCommandPresenter(IBotCommand command, String userName) {
             return "<b>" + COMMAND_INIT_CHARACTER + command.getCommandIdentifier() +
-                    "</b>\n" + command.getDescription(context);
+                    "</b>\n" + command.getDescription(userName);
+    }
+
+    private String userName(CommandContext context) {
+        var update = context.getCommandUpdate();
+        if (update == null || update.getFrom() == null) {
+            return null;
+        }
+        return update.getFrom().getUserName();
     }
 }

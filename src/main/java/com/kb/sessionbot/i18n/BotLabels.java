@@ -26,8 +26,7 @@ public class BotLabels {
 
     public String helpTitle(CommandContext ctx)        { return get("help.title", ctx); }
     public String helpIntro(CommandContext ctx)        { return get("help.intro", ctx); }
-    public String helpDescription()                    { return helpDescription(null); }
-    public String helpDescription(CommandContext ctx)  { return get("help.description", ctx); }
+    public String helpDescription(String userName)     { return getForUser("help.description", userName); }
     public String skip(CommandContext ctx)             { return get("button.skip", ctx); }
     public String yes(CommandContext ctx)              { return get("button.yes", ctx); }
     public String no(CommandContext ctx)               { return get("button.no", ctx); }
@@ -73,7 +72,11 @@ public class BotLabels {
     }
 
     private String get(String key, CommandContext ctx, Object... args) {
-        return messages.getMessage(key, args, localeProvider.getLocale(userName(ctx)));
+        return getForUser(key, userName(ctx), args);
+    }
+
+    private String getForUser(String key, String userName, Object... args) {
+        return messages.getMessage(key, args, localeProvider.getLocale(userName));
     }
 
     private String userName(CommandContext ctx) {

@@ -1,8 +1,10 @@
 package com.kb.sessionbot.config;
 
 import com.kb.sessionbot.CommandsSessionBot;
+import com.kb.sessionbot.InboundUpdateBus;
 import com.kb.sessionbot.MessageExecutor;
 import com.kb.sessionbot.OutboundMessageBus;
+import com.kb.sessionbot.SinkInboundUpdateBus;
 import com.kb.sessionbot.SinkOutboundMessageBus;
 import com.kb.sessionbot.TelegramClientMessageExecutor;
 import com.kb.sessionbot.TelegramUpdateHandler;
@@ -81,13 +83,22 @@ public class CommandsSessionBotConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean
+    public InboundUpdateBus inboundUpdateBus(CommandsSessionBotProperties properties) {
+        return new SinkInboundUpdateBus(properties.getChatIdleTtl());
+    }
+
+    @Bean
     public CommandsSessionBot bot(
             CommandsFactory commandsFactory,
             ErrorHandlerFactory errorHandler,
             MessageExecutor messageExecutor,
             OutboundMessageBus outboundMessageBus,
-            TelegramUpdateHandler telegramUpdateHandler) {
-        return new CommandsSessionBot(commandsFactory, errorHandler, messageExecutor, outboundMessageBus, telegramUpdateHandler);
+            TelegramUpdateHandler telegramUpdateHandler,
+            InboundUpdateBus inboundUpdateBus,
+            CommandsSessionBotProperties properties) {
+        return new CommandsSessionBot(commandsFactory, errorHandler, messageExecutor,
+            outboundMessageBus, telegramUpdateHandler, inboundUpdateBus, properties.getMaxConcurrentChats());
     }
 
 

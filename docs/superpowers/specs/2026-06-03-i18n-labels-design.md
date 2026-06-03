@@ -231,9 +231,14 @@ convention, so an unresolved key shows a sensible string instead of the raw `{ke
 
 | Annotation field | Read at | Resolve call site | Locale |
 |---|---|---|---|
-| `@BotCommand.description` | `DispatcherBotCommand.getDescription()` (feeds startup `SetMyCommands` + help listing) | `getDescription()` returns `botLabels.resolve(rawDescription, null)` | configured (no user ctx) |
+| `@BotCommand.description` | `DispatcherBotCommand.getDescription(String userName)` (feeds startup `SetMyCommands` with `null`, and the help listing with the recipient's user name) | `getDescription(userName)` returns `botLabels.resolve(rawDescription, userName)` | per-user-capable (configured when `userName` is null) |
 | `@Parameter.displayName` | missing-parameter prompt (`CommandsDispatcher`, ctx present) | wrap with `botLabels.resolve(parameter.getDisplayName(), context)` before formatting `param.missing` | per-user-capable |
 | `@RenderingOption.displayValue` | option buttons (renderers, `ParameterRequest.getContext()` present) | resolve each option's display value via `botLabels.resolve(option.getDisplayValue(), ctx)` when building buttons | per-user-capable |
+
+`IBotCommand` exposes a single `String getDescription(String userName)` (no no-arg variant): the
+startup `SetMyCommands` passes `null` (configured locale), and `HelpCommand`'s listing passes the
+recipient's user name (per-user-capable). Keying on `userName` (rather than `CommandContext`) keeps
+`IBotCommand` decoupled from the context type and aligns with `LocaleProvider.getLocale(String)`.
 
 Consumer keys live in the **app's own** message bundles (`messages_uk.properties`, …), reached through
 the parent `MessageSource` chain — so consumers write annotation translations in standard Spring

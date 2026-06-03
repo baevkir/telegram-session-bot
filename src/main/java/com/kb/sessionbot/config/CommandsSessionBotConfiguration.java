@@ -2,7 +2,8 @@ package com.kb.sessionbot.config;
 
 import com.kb.sessionbot.CommandsSessionBot;
 import com.kb.sessionbot.MessageExecutor;
-import com.kb.sessionbot.OutboundMessages;
+import com.kb.sessionbot.OutboundMessageBus;
+import com.kb.sessionbot.SinkOutboundMessageBus;
 import com.kb.sessionbot.TelegramClientMessageExecutor;
 import com.kb.sessionbot.TelegramUpdateHandler;
 import com.kb.sessionbot.auth.AuthInterceptor;
@@ -66,8 +67,8 @@ public class CommandsSessionBotConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public OutboundMessages outboundMessages() {
-        return new OutboundMessages();
+    public OutboundMessageBus outboundMessageBus() {
+        return new SinkOutboundMessageBus();
     }
 
     @Bean
@@ -84,9 +85,9 @@ public class CommandsSessionBotConfiguration {
             CommandsFactory commandsFactory,
             ErrorHandlerFactory errorHandler,
             MessageExecutor messageExecutor,
-            OutboundMessages outboundMessages,
+            OutboundMessageBus outboundMessageBus,
             TelegramUpdateHandler telegramUpdateHandler) {
-        return new CommandsSessionBot(commandsFactory, errorHandler, messageExecutor, outboundMessages, telegramUpdateHandler);
+        return new CommandsSessionBot(commandsFactory, errorHandler, messageExecutor, outboundMessageBus, telegramUpdateHandler);
     }
 
 

@@ -25,25 +25,25 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 
-class OutboundMessagesTest {
+class SinkOutboundMessageBusTest {
 
-    @DisplayName("sendMessage enqueues a message that messages() emits")
+    @DisplayName("send enqueues a message that messages() emits")
     @Test
-    void sendMessageEnqueuesAndMessagesEmits() {
-        var outbound = new OutboundMessages();
+    void sendEnqueuesAndMessagesEmits() {
+        var outbound = new SinkOutboundMessageBus();
         var msg = SendMessage.builder().chatId(String.valueOf(Fixtures.CHAT_ID)).text("hi").build();
 
         StepVerifier.create(outbound.messages())
-            .then(() -> outbound.sendMessage(msg))
+            .then(() -> outbound.send(msg))
             .expectNext(msg)
             .thenCancel()
             .verify();
     }
 
-    @DisplayName("concurrent sendMessage from multiple threads loses no message (busyLooping guarantee)")
+    @DisplayName("concurrent send from multiple threads loses no message (busyLooping guarantee)")
     @Test
-    void concurrentSendMessageLosesNothing() throws Exception {
-        var outbound = new OutboundMessages();
+    void concurrentSendLosesNothing() throws Exception {
+        var outbound = new SinkOutboundMessageBus();
         var telegramClient = Mockito.mock(TelegramClient.class);
         Mockito.when(telegramClient.execute(any(BotApiMethod.class)))
             .thenReturn(Fixtures.message(Fixtures.CHAT_ID, 999, "sent"));
@@ -71,7 +71,7 @@ class OutboundMessagesTest {
                     try {
                         start.await();
                         for (int i = 0; i < perThread; i++) {
-                            outbound.sendMessage(SendMessage.builder()
+                            outbound.send(SendMessage.builder()
                                 .chatId(String.valueOf(Fixtures.CHAT_ID))
                                 .text("m" + sent.getAndIncrement())
                                 .build());

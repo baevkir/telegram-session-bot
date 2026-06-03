@@ -18,8 +18,8 @@ import jakarta.annotation.PreDestroy;
 
 /**
  * Reactive long-polling bot. Incoming updates are grouped per chat and handed to a
- * {@link TelegramUpdateHandler}; out-of-band messages and the startup command list are
- * executed through a {@link MessageExecutor}.
+ * {@link TelegramUpdateHandler}; out-of-band messages from the {@link OutboundMessageBus} and
+ * the startup command list are executed through a {@link MessageExecutor}.
  */
 @Slf4j
 public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer {
@@ -27,7 +27,7 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
     private final CommandsFactory commandsFactory;
     private final ErrorHandlerFactory errorHandler;
     private final MessageExecutor messageExecutor;
-    private final OutboundMessages outboundMessages;
+    private final OutboundMessageBus outboundMessageBus;
     private final TelegramUpdateHandler updateHandler;
     private final Sinks.Many<Update> updatesSink = Sinks.many().unicast().onBackpressureBuffer();
     private Disposable subscription;
@@ -36,13 +36,13 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
         CommandsFactory commandsFactory,
         ErrorHandlerFactory errorHandler,
         MessageExecutor messageExecutor,
-        OutboundMessages outboundMessages,
+        OutboundMessageBus outboundMessageBus,
         TelegramUpdateHandler updateHandler
     ) {
         this.commandsFactory = commandsFactory;
         this.errorHandler = errorHandler;
         this.messageExecutor = messageExecutor;
-        this.outboundMessages = outboundMessages;
+        this.outboundMessageBus = outboundMessageBus;
         this.updateHandler = updateHandler;
     }
 
@@ -70,7 +70,7 @@ public class CommandsSessionBot implements LongPollingSingleThreadUpdateConsumer
                             log.warn("Handling pipeline error in a chat group", error);
                             return errorHandler.handle(error).doOnNext(messageExecutor::execute);
                         }))
-                    .mergeWith(outboundMessages.messages().publishOn(Schedulers.boundedElastic()).doOnNext(messageExecutor::execute))
+                    .mergeWith(outboundMessageBus.messages().publishOn(Schedulers.boundedElastic()).doOnNext(messageExecutor::execute))
             ).subscribe(
                 message -> { },
                 error -> log.error("Bot pipeline terminated unexpectedly", error)

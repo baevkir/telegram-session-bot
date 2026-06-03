@@ -39,7 +39,7 @@ class CommandsSessionBotTest {
     private TelegramClient telegramClient;
     private CommandsFactory commandsFactory;
     private ErrorHandlerFactory errorHandlerFactory;
-    private OutboundMessages outboundMessages;
+    private OutboundMessageBus outboundMessageBus;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -60,7 +60,7 @@ class CommandsSessionBotTest {
         Mockito.when(telegramClient.execute(any(BotApiMethod.class)))
             .thenReturn(Fixtures.message(Fixtures.CHAT_ID, 999, "sent"));
 
-        outboundMessages = new OutboundMessages();
+        outboundMessageBus = new SinkOutboundMessageBus();
     }
 
     @AfterEach
@@ -72,7 +72,7 @@ class CommandsSessionBotTest {
         var executor = new TelegramClientMessageExecutor(telegramClient, errorHandlerFactory);
         var updateHandler = new TelegramUpdateHandler(commandsFactory, auth, executor);
         return new CommandsSessionBot(
-            commandsFactory, errorHandlerFactory, executor, outboundMessages, updateHandler);
+            commandsFactory, errorHandlerFactory, executor, outboundMessageBus, updateHandler);
     }
 
     @DisplayName("consume() drives an update end-to-end to telegramClient.execute")

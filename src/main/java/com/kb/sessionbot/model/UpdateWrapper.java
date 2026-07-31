@@ -5,7 +5,9 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.util.StringUtils;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
+import org.telegram.telegrambots.meta.api.objects.Document;
 import org.telegram.telegrambots.meta.api.objects.message.MaybeInaccessibleMessage;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
@@ -24,7 +26,7 @@ public class UpdateWrapper {
     public static UpdateWrapper wrap(Update update) {
         return new UpdateWrapper(
             Objects.requireNonNull(update, "Update is null."),
-            MessageDescriptor.parse(getText(update).orElse(""))
+            getText(update).filter(StringUtils::hasText).map(MessageDescriptor::parse).orElseGet(MessageDescriptor::empty)
         );
     }
 
@@ -73,13 +75,17 @@ public class UpdateWrapper {
             .map(CallbackQuery::getMessage);
     }
 
+    public Optional<Document> getDocument() {
+        return Optional.ofNullable(update.getMessage()).map(Message::getDocument);
+    }
+
     public DynamicParameters getDynamicParams() {
         return messageDescriptor.getDynamicParams();
     }
 
     private static Optional<String> getText(Update update) {
         if (update.hasMessage()) {
-            return Optional.of(update.getMessage().getText());
+            return Optional.ofNullable(update.getMessage().getText());
         }
         if (update.hasCallbackQuery()) {
             return Optional.of(update.getCallbackQuery().getData());

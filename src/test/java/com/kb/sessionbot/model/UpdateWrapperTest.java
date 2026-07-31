@@ -20,13 +20,13 @@ class UpdateWrapperTest {
     }
 
     @Test
-    @DisplayName("wrap of update with neither message nor callback throws on empty text parse")
-    void wrapEmptyTextThrows() {
+    @DisplayName("wrap of update with neither message nor callback wraps as an empty, non-command descriptor")
+    void wrapNoTextWrapsAsEmptyDescriptor() {
         var update = new Update();
         update.setUpdateId(1);
-        assertThatThrownBy(() -> UpdateWrapper.wrap(update))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessage("text is empty");
+        var wrapper = UpdateWrapper.wrap(update);
+        assertThat(wrapper.isCommand()).isFalse();
+        assertThat(wrapper.getAnswers()).isEmpty();
     }
 
     @Nested
@@ -112,5 +112,20 @@ class UpdateWrapperTest {
         var wrapper = UpdateWrapper.wrap(Fixtures.messageUpdate(1, 1L, 1, "/order?buy&book"));
         assertThat(wrapper.getCommand()).isEqualTo("order");
         assertThat(wrapper.getAnswers()).containsExactly("buy", "book");
+    }
+
+    @Test
+    void wrapsDocumentMessageWithoutText() {
+        var wrapper = UpdateWrapper.wrap(Fixtures.documentUpdate(1, 42L, 100, "data.csv"));
+        assertThat(wrapper.isCommand()).isFalse();
+        assertThat(wrapper.getDocument()).isPresent();
+        assertThat(wrapper.getDocument().get().getFileName()).isEqualTo("data.csv");
+        assertThat(wrapper.getChatId()).isEqualTo("42");
+    }
+
+    @Test
+    void documentAbsentOnPlainTextMessage() {
+        var wrapper = UpdateWrapper.wrap(Fixtures.messageUpdate(1, 42L, 100, "hello"));
+        assertThat(wrapper.getDocument()).isEmpty();
     }
 }

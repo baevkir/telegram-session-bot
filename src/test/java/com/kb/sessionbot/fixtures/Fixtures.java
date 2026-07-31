@@ -3,6 +3,7 @@ package com.kb.sessionbot.fixtures;
 import com.kb.sessionbot.model.CommandContext;
 import com.kb.sessionbot.model.UpdateWrapper;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
+import org.telegram.telegrambots.meta.api.objects.Document;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.User;
 import org.telegram.telegrambots.meta.api.objects.chat.Chat;
@@ -39,6 +40,24 @@ public final class Fixtures {
         var update = new Update();
         update.setUpdateId(updateId);
         update.setMessage(message(chatId, messageId, text));
+        return update;
+    }
+
+    /** A message-based update carrying a document and no text. */
+    public static Update documentUpdate(int updateId, long chatId, int messageId, String fileName) {
+        var document = new Document();
+        document.setFileId("file-" + updateId);
+        document.setFileUniqueId("ufile-" + updateId);
+        document.setFileName(fileName);
+        var message = Message.builder()
+            .messageId(messageId)
+            .chat(Chat.builder().id(chatId).type("private").build())
+            .from(user("tester"))
+            .document(document)
+            .build();
+        var update = new Update();
+        update.setUpdateId(updateId);
+        update.setMessage(message);
         return update;
     }
 

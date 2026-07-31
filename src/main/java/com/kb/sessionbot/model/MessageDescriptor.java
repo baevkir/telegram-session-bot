@@ -37,6 +37,15 @@ public class MessageDescriptor {
         return parser;
     }
 
+    /** A descriptor for updates with no wire text to parse (e.g. a bare document message). */
+    public static MessageDescriptor empty() {
+        MessageDescriptor descriptor = new MessageDescriptor();
+        descriptor.command = null;
+        descriptor.answers = Collections.emptyList();
+        descriptor.dynamicParams = DynamicParameters.empty();
+        return descriptor;
+    }
+
     public boolean isCommand() {
         return command != null;
     }

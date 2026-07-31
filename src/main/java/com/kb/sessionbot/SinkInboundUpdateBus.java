@@ -33,14 +33,19 @@ public class SinkInboundUpdateBus implements InboundUpdateBus {
     @Override
     public Flux<ChatUpdateStream> updates() {
         return sink.asFlux()
-            .<Update>handle((update, downstream) -> {
-                if (update.hasMessage() || update.hasCallbackQuery()) {
-                    downstream.next(update);
-                } else {
+            .<UpdateWrapper>handle((update, downstream) -> {
+                if (!update.hasMessage() && !update.hasCallbackQuery()) {
                     log.warn("Skipping update {} without a chat id", update.getUpdateId());
+                    return;
+                }
+                try {
+                    downstream.next(UpdateWrapper.wrap(update));
+                } catch (RuntimeException wrapFailure) {
+                    // A single malformed update must never terminate the shared root stream (every
+                    // chat's updates flow through it) - log and drop instead of propagating an error.
+                    log.warn("Skipping update {} that failed to wrap", update.getUpdateId(), wrapFailure);
                 }
             })
-            .map(UpdateWrapper::wrap)
             .groupBy(UpdateWrapper::getChatId)
             .map(group -> new ChatUpdateStream(group.key(), group.timeout(idleTtl, Flux.empty())));
     }

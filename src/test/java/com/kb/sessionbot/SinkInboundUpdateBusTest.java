@@ -73,6 +73,21 @@ class SinkInboundUpdateBusTest {
         subscription.dispose();
     }
 
+    @DisplayName("an update that fails to wrap (malformed dynamic params) is dropped and does not terminate the inbound stream")
+    @Test
+    void updateThatFailsToWrapIsDroppedAndStreamSurvives() {
+        var bus = new SinkInboundUpdateBus(Duration.ofMinutes(30));
+        // Duplicate dynamic-param keys make MessageDescriptor.parse throw (Collectors.toMap merge conflict).
+        var malformed = Fixtures.callbackUpdate(1, 100L, 1, "book#dup:1&dup:2");
+
+        StepVerifier.create(bus.updates().map(ChatUpdateStream::chatId))
+            .then(() -> bus.emit(malformed))   // fails to wrap, must be dropped, not error the stream
+            .then(() -> bus.emit(Fixtures.messageUpdate(2, 200L, 2, "/order?buy")))
+            .expectNext("200")   // a later update from another chat still flows through
+            .thenCancel()
+            .verify();
+    }
+
     @DisplayName("a new update after idle completion recreates a fresh stream for the same chat")
     @Test
     void streamRecreatedAfterIdleCompletion() throws Exception {

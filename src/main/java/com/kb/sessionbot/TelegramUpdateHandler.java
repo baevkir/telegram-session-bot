@@ -2,13 +2,16 @@ package com.kb.sessionbot;
 
 import com.kb.sessionbot.auth.AuthInterceptor;
 import com.kb.sessionbot.commands.CommandsFactory;
+import com.kb.sessionbot.documents.DocumentHandler;
 import com.kb.sessionbot.errors.exception.BotAuthException;
+import com.kb.sessionbot.errors.exception.BotCommandException;
 import com.kb.sessionbot.model.CommandContext;
 import com.kb.sessionbot.model.ContextState;
 import com.kb.sessionbot.model.UpdateWrapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.Assert;
 import org.telegram.telegrambots.meta.api.methods.botapimethods.PartialBotApiMethod;
+import org.telegram.telegrambots.meta.api.objects.Document;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
 import reactor.core.publisher.Flux;
 
@@ -28,15 +31,18 @@ public class TelegramUpdateHandler {
     private final CommandsFactory commandsFactory;
     private final AuthInterceptor authInterceptor;
     private final MessageExecutor messageExecutor;
+    private final List<DocumentHandler> documentHandlers;
 
     public TelegramUpdateHandler(
         CommandsFactory commandsFactory,
         AuthInterceptor authInterceptor,
-        MessageExecutor messageExecutor
+        MessageExecutor messageExecutor,
+        List<DocumentHandler> documentHandlers
     ) {
         this.commandsFactory = commandsFactory;
         this.authInterceptor = authInterceptor;
         this.messageExecutor = messageExecutor;
+        this.documentHandlers = documentHandlers;
     }
 
     public Flux<PartialBotApiMethod<?>> handleUpdates(Flux<UpdateWrapper> updates) {
@@ -64,7 +70,14 @@ public class TelegramUpdateHandler {
 
     private Flux<PartialBotApiMethod<?>> dispatch(CommandContext context) {
         if (context.isEmpty()) {
-            return Flux.<PartialBotApiMethod<?>>from(commandsFactory.getHelpCommand().process(context)).doOnNext(messageExecutor::execute);
+            return context.getCurrentUpdate()
+                .flatMap(update -> update.getDocument()
+                    .flatMap(document -> documentHandlers.stream()
+                        .filter(handler -> handler.supports(document))
+                        .findFirst()
+                        .map(handler -> dispatchDocument(update, document, handler))))
+                .orElseGet(() -> Flux.<PartialBotApiMethod<?>>from(commandsFactory.getHelpCommand().process(context))
+                    .doOnNext(messageExecutor::execute));
         }
         log.debug("Dispatching command '{}' in chat {} (state={})", context.getCommand(), context.getChatId(), context.getState());
         return authInterceptor.intercept(context)
@@ -83,6 +96,24 @@ public class TelegramUpdateHandler {
                     context.addQuestionMessage(resultMessage);
                 }
             });
+    }
+
+    private Flux<PartialBotApiMethod<?>> dispatchDocument(UpdateWrapper update, Document document, DocumentHandler handler) {
+        var documentContext = CommandContext.forUpdate(update);
+        log.debug("Dispatching document '{}' in chat {}", document.getFileName(), documentContext.getChatId());
+        return authInterceptor.intercept(documentContext)
+            .<PartialBotApiMethod<?>>flatMapMany(authorized -> {
+                if (!authorized) {
+                    var from = update.getFrom();
+                    var username = from != null ? from.getUserName() : "unknown";
+                    return Flux.error(new BotAuthException(documentContext, "User " + username + " is unauthorized to use bot."));
+                }
+                return handler.handle(documentContext, document);
+            })
+            .onErrorMap(error -> error instanceof BotCommandException || error instanceof BotAuthException
+                ? error
+                : new BotCommandException(documentContext, error))
+            .doOnNext(messageExecutor::execute);
     }
 
     /**

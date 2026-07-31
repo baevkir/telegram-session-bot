@@ -34,6 +34,14 @@ public class CommandContext {
         return context;
     }
 
+    /** Context for a non-command update dispatched outside the command flow (e.g. a bare document). */
+    public static CommandContext forUpdate(UpdateWrapper update) {
+        CommandContext context = new CommandContext();
+        context.commandUpdate = update;
+        context.state = ContextState.open;
+        return context;
+    }
+
     public static CommandContext empty() {
         return new CommandContext();
     }

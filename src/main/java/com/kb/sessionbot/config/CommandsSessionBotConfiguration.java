@@ -15,6 +15,7 @@ import com.kb.sessionbot.commands.IBotCommand;
 import com.kb.sessionbot.commands.dispatcher.DispatcherBotCommand;
 import com.kb.sessionbot.commands.dispatcher.annotations.BotCommand;
 import com.kb.sessionbot.commands.dispatcher.parameters.*;
+import com.kb.sessionbot.documents.DocumentHandler;
 import com.kb.sessionbot.errors.handler.BotAuthErrorHandler;
 import com.kb.sessionbot.errors.handler.BotCommandErrorHandler;
 import com.kb.sessionbot.errors.handler.ErrorHandler;
@@ -86,8 +87,10 @@ public class CommandsSessionBotConfiguration {
     public TelegramUpdateHandler telegramUpdateHandler(
             CommandsFactory commandsFactory,
             AuthInterceptor authInterceptor,
-            MessageExecutor messageExecutor) {
-        return new TelegramUpdateHandler(commandsFactory, authInterceptor, messageExecutor);
+            MessageExecutor messageExecutor,
+            ObjectProvider<DocumentHandler> documentHandlers) {
+        return new TelegramUpdateHandler(commandsFactory, authInterceptor, messageExecutor,
+            documentHandlers.orderedStream().toList());
     }
 
     @Bean

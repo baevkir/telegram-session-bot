@@ -5,6 +5,7 @@ import com.kb.sessionbot.commands.CommandsFactory;
 import com.kb.sessionbot.commands.HelpCommand;
 import com.kb.sessionbot.commands.IBotCommand;
 import com.kb.sessionbot.commands.dispatcher.DispatcherBotCommand;
+import com.kb.sessionbot.documents.DocumentHandler;
 import com.kb.sessionbot.errors.exception.BotAuthException;
 import com.kb.sessionbot.errors.handler.BotAuthErrorHandler;
 import com.kb.sessionbot.errors.handler.BotCommandErrorHandler;
@@ -14,21 +15,26 @@ import com.kb.sessionbot.fixtures.EchoCommand;
 import com.kb.sessionbot.fixtures.Fixtures;
 import com.kb.sessionbot.fixtures.FixtureCommandConfig;
 import com.kb.sessionbot.fixtures.OrderCommand;
+import com.kb.sessionbot.model.CommandContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
+import org.reactivestreams.Publisher;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.telegram.telegrambots.meta.api.methods.botapimethods.BotApiMethod;
+import org.telegram.telegrambots.meta.api.methods.botapimethods.PartialBotApiMethod;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.objects.Document;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -72,9 +78,14 @@ class TelegramUpdateHandlerTest {
     }
 
     private TelegramUpdateHandler handler(AuthInterceptor auth) {
+        return handler(auth, List.of());
+    }
+
+    private TelegramUpdateHandler handler(AuthInterceptor auth, List<DocumentHandler> documentHandlers) {
         return new TelegramUpdateHandler(
             commandsFactory, auth,
-            new TelegramClientMessageExecutor(telegramClient, errorHandlerFactory));
+            new TelegramClientMessageExecutor(telegramClient, errorHandlerFactory),
+            documentHandlers);
     }
 
     @DisplayName("command update completes and emits its SendMessage response")
@@ -232,5 +243,70 @@ class TelegramUpdateHandlerTest {
                 .map(m -> ((SendMessage) m).getText()))
             .expectNext("buy:book")   // first command's close result
             .verifyComplete();        // stream completed after the close -> "buy:pen" not processed here
+    }
+
+    @DisplayName("bare document routes to the matching document handler")
+    @Test
+    void documentRoutesToMatchingHandler() {
+        DocumentHandler csvHandler = new DocumentHandler() {
+            @Override public boolean supports(Document document) { return "data.csv".equals(document.getFileName()); }
+            @Override public Publisher<PartialBotApiMethod<?>> handle(CommandContext context, Document document) {
+                return Mono.just(SendMessage.builder().chatId(context.getChatId()).text("imported " + document.getFileName()).build());
+            }
+        };
+        var handler = handler(ALLOW, List.of(csvHandler));
+        var updates = Flux.just(Fixtures.wrap(Fixtures.documentUpdate(1, Fixtures.CHAT_ID, 100, "data.csv")));
+
+        StepVerifier.create(handler.handleUpdates(updates))
+            .assertNext(sent -> assertThat(((SendMessage) sent).getText()).isEqualTo("imported data.csv"))
+            .verifyComplete();
+    }
+
+    @DisplayName("bare document with no matching handler falls back to help")
+    @Test
+    void documentWithoutHandlerFallsBackToHelp() {
+        var handler = handler(ALLOW, List.of());
+        var updates = Flux.just(Fixtures.wrap(Fixtures.documentUpdate(1, Fixtures.CHAT_ID, 100, "data.csv")));
+
+        StepVerifier.create(handler.handleUpdates(updates))
+            .assertNext(sent -> assertThat(sent).isInstanceOf(SendMessage.class))
+            .verifyComplete();
+    }
+
+    @DisplayName("document during an active command flow never reaches document handlers")
+    @Test
+    void documentMidCommandDoesNotDispatchHandlers() {
+        var invoked = new AtomicBoolean(false);
+        DocumentHandler spyHandler = new DocumentHandler() {
+            @Override public boolean supports(Document document) { invoked.set(true); return true; }
+            @Override public Publisher<PartialBotApiMethod<?>> handle(CommandContext context, Document document) {
+                invoked.set(true); return Mono.empty();
+            }
+        };
+        var handler = handler(ALLOW, List.of(spyHandler));
+        var updates = Flux.just(
+            Fixtures.wrap(Fixtures.messageUpdate(1, Fixtures.CHAT_ID, 100, "/order")),
+            Fixtures.wrap(Fixtures.documentUpdate(2, Fixtures.CHAT_ID, 101, "data.csv")));
+
+        StepVerifier.create(handler.handleUpdates(updates))
+            .thenConsumeWhile(message -> true)
+            .verifyComplete();
+        assertThat(invoked).isFalse();
+    }
+
+    @DisplayName("document dispatch is auth-gated")
+    @Test
+    void documentDeniedByAuthErrors() {
+        DocumentHandler csvHandler = new DocumentHandler() {
+            @Override public boolean supports(Document document) { return true; }
+            @Override public Publisher<PartialBotApiMethod<?>> handle(CommandContext context, Document document) {
+                return Mono.just(SendMessage.builder().chatId(context.getChatId()).text("never").build());
+            }
+        };
+        var handler = handler(DENY, List.of(csvHandler));
+        var updates = Flux.just(Fixtures.wrap(Fixtures.documentUpdate(1, Fixtures.CHAT_ID, 100, "data.csv")));
+
+        StepVerifier.create(handler.handleUpdates(updates))
+            .verifyError(BotAuthException.class);
     }
 }

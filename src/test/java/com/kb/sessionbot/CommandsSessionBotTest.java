@@ -5,6 +5,7 @@ import com.kb.sessionbot.commands.CommandsFactory;
 import com.kb.sessionbot.commands.HelpCommand;
 import com.kb.sessionbot.commands.IBotCommand;
 import com.kb.sessionbot.commands.dispatcher.DispatcherBotCommand;
+import com.kb.sessionbot.documents.DocumentHandler;
 import com.kb.sessionbot.errors.handler.BotAuthErrorHandler;
 import com.kb.sessionbot.errors.handler.BotCommandErrorHandler;
 import com.kb.sessionbot.errors.handler.ErrorHandler;
@@ -13,20 +14,26 @@ import com.kb.sessionbot.fixtures.EchoCommand;
 import com.kb.sessionbot.fixtures.Fixtures;
 import com.kb.sessionbot.fixtures.FixtureCommandConfig;
 import com.kb.sessionbot.fixtures.OrderCommand;
+import com.kb.sessionbot.model.CommandContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
+import org.reactivestreams.Publisher;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.telegram.telegrambots.meta.api.methods.botapimethods.BotApiMethod;
+import org.telegram.telegrambots.meta.api.methods.botapimethods.PartialBotApiMethod;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.objects.Document;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atMost;
 import static org.mockito.Mockito.timeout;
@@ -71,8 +78,12 @@ class CommandsSessionBotTest {
     }
 
     private CommandsSessionBot bot(AuthInterceptor auth) {
+        return bot(auth, List.of());
+    }
+
+    private CommandsSessionBot bot(AuthInterceptor auth, List<DocumentHandler> documentHandlers) {
         var executor = new TelegramClientMessageExecutor(telegramClient, errorHandlerFactory);
-        var updateHandler = new TelegramUpdateHandler(commandsFactory, auth, executor);
+        var updateHandler = new TelegramUpdateHandler(commandsFactory, auth, executor, documentHandlers);
         var inboundUpdateBus = new SinkInboundUpdateBus(Duration.ofMinutes(30));
         return new CommandsSessionBot(
             commandsFactory, errorHandlerFactory, executor, outboundMessageBus, updateHandler,
@@ -102,6 +113,27 @@ class CommandsSessionBotTest {
 
         // SetMyCommands + the auth error message + chat B's help response all execute.
         verify(telegramClient, timeout(5000).atLeast(3)).execute(any(BotApiMethod.class));
+    }
+
+    @DisplayName("a document handler's raw RuntimeException still produces a reply, not silence")
+    @Test
+    void documentHandlerErrorProducesReply() throws Exception {
+        DocumentHandler failingHandler = new DocumentHandler() {
+            @Override public boolean supports(Document document) { return true; }
+            @Override public Publisher<PartialBotApiMethod<?>> handle(CommandContext context, Document document) {
+                return Mono.error(new RuntimeException("boom"));
+            }
+        };
+        var bot = bot(ALLOW, List.of(failingHandler));
+        bot.init();
+
+        bot.consume(Fixtures.documentUpdate(1, Fixtures.CHAT_ID, 100, "data.csv"));
+
+        var executed = ArgumentCaptor.forClass(BotApiMethod.class);
+        // SetMyCommands at startup + the error handler's reply for the failed document import.
+        verify(telegramClient, timeout(2000).atLeast(2)).execute(executed.capture());
+        assertThat(executed.getAllValues())
+            .anyMatch(m -> m instanceof SendMessage && "boom".equals(((SendMessage) m).getText()));
     }
 
     @DisplayName("out-of-band messages pushed via OutboundMessageBus execute through the coordinator")
